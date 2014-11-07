@@ -1,4 +1,5 @@
 au FileType json source ~/.vim/colors/json.vim
+set bg=dark
 
 set ai						" always set autoindenting on
 set backup					" keep a backup file

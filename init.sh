@@ -2,8 +2,8 @@
 
 #sudo wget this?
 mkdir ~/tmp
+MYINIT="git-init"
 sudo apt-get install git
 sudo git clone https://github.com/redog/git-init
-sudo git-init/configure.sh
-sudo git-init/authtoken.py 
-#sudo git-init/ghcreaterepo.py
+sudo ${MYINIT}/configure.sh
+#sudo ${MYINIT}/authtoken.py
