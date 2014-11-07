@@ -1,1 +1,0 @@
-netrw: call delete('/home/eric/.vim/plugin/netrwPlugin.vim')|call delete('/home/eric/.vim/autoload/netrw.vim')|call delete('/home/eric/.vim/autoload/netrwFileHandlers.vim')|call delete('/home/eric/.vim/autoload/netrwSettings.vim')|call delete('/home/eric/.vim/doc/pi_netrw.txt')|call delete('/home/eric/.vim/syntax/netrw.vim')
