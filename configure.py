@@ -30,8 +30,8 @@ def main():
     username = raw_input('Git username: ')
     email = raw_input('Git email: ')
     githubuser = raw_input('Github login name: ')
-    cmd = '/usr/bin/bash -c '+home+'/git-init/configure.sh'
-    p = subprocess.Popen([cmd, username, email, githubuser], stdout=subprocess.PIPE)
+    cmd = ['/bin/bash', '-c', home+'/git-init/configure.sh' , username, email, githubuser ]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     rslt, error = p.communicate()
 
 
