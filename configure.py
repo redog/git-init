@@ -26,10 +26,11 @@ def main():
     # User Input
     #
     #TODO: validate?
+    home = os.environ['HOME']
     username = raw_input('Git username: ')
     email = raw_input('Git email: ')
     githubuser = raw_input('Github login name: ')
-    p = subprocess.Popen(['bash -c ./git-init/configure.sh', username, email, githubuser], stdout=subprocess.PIPE)
+    p = subprocess.Popen(['bash -c '+home+'/git-init/configure.sh', username, email, githubuser], stdout=subprocess.PIPE)
     rslt, error = p.communicate()
 
 
