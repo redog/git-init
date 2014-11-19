@@ -1,6 +1,9 @@
 import getpass
-import sys
+import sys, os
+import subprocess
 from ast import literal_eval
+
+FNULL= open(os.devnull, 'w')
 
 def safeinput(s):
     try:
@@ -26,6 +29,9 @@ def main():
     username = raw_input('Git username: ')
     email = raw_input('Git email: ')
     githubuser = raw_input('Github login name: ')
+    p = subprocess.Popen(['bash -c ./configure.sh', username, email, githubuser], stdout=subprocess.PIPE)
+    rslt, error = p.communicate()
+
 
 if __name__ == '__main__':
     main()
