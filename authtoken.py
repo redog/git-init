@@ -1,14 +1,11 @@
 GITHUB_API = 'https://api.github.com'
 
-
 import requests
 import getpass
 import json
 from urlparse import urljoin
 import sys
 from ast import literal_eval
-
-
 
 def safeinput(s):
     try:
