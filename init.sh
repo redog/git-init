@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh -
 
 #sudo wget this?
 mkdir ~/tmp
