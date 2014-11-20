@@ -4,8 +4,11 @@ import requests
 import getpass
 import json
 from urlparse import urljoin
-import sys
+import sys, os
+import subprocess
 from ast import literal_eval
+
+FNULL = open(os.devnull, 'w')
 
 def safeinput(s):
     try:
@@ -23,17 +26,16 @@ def raw_input(*args):
     finally:
         sys.stdout=old_stdout
 
-def main(argv):
+def main():
     #
     # User Input
     #
+    home = os.environ['HOME']
+    name = raw_input('Full Name: ')
+    email = raw_input('Email Address: ')
     username = raw_input('Github username: ')
     password = getpass.getpass('Github password: ')
-    if len(argv) is 0:
-        note = safeinput(raw_input('Note (optional): '))
-    else:
-        note = safeinput(sys.argv[1])
-
+    note = safeinput(raw_input('Note (optional): '))
     #
     # Compose Request
     #
@@ -41,6 +43,7 @@ def main(argv):
     payload = {}
     if note:
         payload['note'] = note
+    payload['scopes'] = ["repo"]
     res = requests.post(
         url,
         auth = (username, password),
@@ -52,6 +55,15 @@ def main(argv):
     j = json.loads(res.text)
     token = j['token']
     print(token)
+   #
+   # Configure git & github
+   #
+    print(['/bin/bash', home+'/git-init/configure.sh', name, email, username, token ])
+    cmd = ['/bin/bash', home+'/git-init/configure.sh', name, email, username, token ]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    rslt, error = p.communicate()
+###
+#    print(token)
 
 if __name__ == '__main__':
-    main(sys.argv)
+    main()
