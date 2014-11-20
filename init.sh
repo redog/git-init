@@ -4,10 +4,11 @@
 mkdir ~/tmp
 MYINIT="git-init"
 sudo apt-get install git
-sudo git clone https://github.com/redog/git-init
+git clone https://github.com/redog/git-init
 
 # configure git 
 #python ${MYINIT}/configure.py
 
 # configure git & github
 python ${MYINIT}/authtoken.py
+
