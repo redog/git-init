@@ -3,7 +3,10 @@ GITHUB_API = 'https://api.github.com'
 import requests
 import getpass
 import json
-from urlparse import urljoin
+# python 3
+from urllib.parse import urljoin
+# python 2?
+#from urlparse import urljoin
 import sys, os
 import subprocess
 from ast import literal_eval
@@ -15,27 +18,30 @@ def safeinput(s):
         return literal_eval(s)
     except:
         return s
-
-old_raw_input = raw_input
-
-def raw_input(*args):
-    old_stdout = sys.stdout
-    try:
-        sys.stdout=sys.stderr
-        return old_raw_input(*args)
-    finally:
-        sys.stdout=old_stdout
+#python2?
+#old_raw_input = raw_input
+#python2?
+#def raw_input(*args):
+#    old_stdout = sys.stdout
+#    try:
+#        sys.stdout=sys.stderr
+#        return old_raw_input(*args)
+#    finally:
+#        sys.stdout=old_stdout
 
 def main():
     #
     # User Input
     #
     home = os.environ['HOME']
-    name = raw_input('Full Name: ')
-    email = raw_input('Email Address: ')
-    username = raw_input('Github username: ')
+    curd = os.getcwd()
+    name = input('Full Name: ')
+    email = input('Email Address: ')
+    username = input('Github username: ')
     password = getpass.getpass('Github password: ')
-    note = safeinput(raw_input('Note (optional): '))
+	#No longer optional ?
+    #note = safeinput(input('Note (optional): '))
+    note = safeinput(input('Note: '))
     #
     # Compose Request
     #
@@ -58,8 +64,10 @@ def main():
    #
    # Configure git & github
    #
-    print(['/bin/bash', home+'/git-init/configure.sh', name, email, username, token ])
-    cmd = ['/bin/bash', home+'/git-init/configure.sh', name, email, username, token ]
+   # print(['/bin/bash', home+'/git-init/configure.sh', name, email, username, token ])
+   # cmd = ['/bin/bash', home+'/git-init/configure.sh', name, email, username, token ]
+    print(['/bin/bash', curd+'/configure.sh', name, email, username, token ])
+    cmd = ['/bin/bash', curd+'/configure.sh', name, email, username, token ]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     rslt, error = p.communicate()
 ###
