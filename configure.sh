@@ -38,4 +38,4 @@ if ! curl -fsSL "https://github.com/${username}/${repo}" > /dev/null; then
   exit 1
 fi
 
-git remote add origin https://${token}@github.com/${username}/${repo}.git
+git remote add origin ttps://${token}@github.com/${username}/${repo}.git
