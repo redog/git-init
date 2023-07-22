@@ -6,10 +6,3 @@
 	git config --global user.github.token "${4}"
 	git config --global credential.helper 'cache --timeout=1800'
 	git config --global push.default simple
-
-# add the following to ~/.netrc [ ~\_netrc (on windows) ]
-#machine github.com
-#login redog
-#password <token>
-
-

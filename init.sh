@@ -14,10 +14,5 @@ sudo apt-get intall -y fabric
 sudo apt-get intall -y vim
 sudo apt-get intall -y boto
 
-
-# configure git 
-#python ${MYINIT}/configure.py
-
 # configure git & github
 python ${MYINIT}/authtoken.py
-
