@@ -11,13 +11,6 @@ username=$3
 token=$4
 repo=$5
 
-git config --global user.name "${name}"
-git config --global user.email "${email}"
-git config --global user.github.login.name "${username}"
-git config --global user.github.token "${token}"
-git config --global credential.helper 'cache --timeout=1800'
-git config --global push.default simple
-
 if [[ -d "${repo}" ]]; then
   echo "Directory ${repo} already exists"
   exit 1
@@ -31,6 +24,13 @@ fi
 
 cd "${repo}"
 git init
+
+git config user.name "${name}"
+git config user.email "${email}"
+git config user.github.login.name "${username}"
+git config user.github.token "${token}"
+git config credential.helper 'cache --timeout=1800'
+git config push.default simple
 
 # Verify the GitHub repo exists before trying to add it as a remote
 repo_exists=$(curl -fsSL -H "Authorization: token ${token}" "https://api.github.com/repos/${username}/${repo}")
