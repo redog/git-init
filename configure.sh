@@ -24,13 +24,35 @@ fi
 
 cd "${repo}"
 git init
+# Set user.name locally if it's not set globally
+if [[ -z $(git config --global --get user.name) ]]; then
+  git config user.name "${name}"
+fi
 
-git config user.name "${name}"
-git config user.email "${email}"
-git config user.github.login.name "${username}"
-git config user.github.token "${token}"
-git config credential.helper 'cache --timeout=1800'
-git config push.default simple
+# Set user.email locally if it's not set globally
+if [[ -z $(git config --global --get user.email) ]]; then
+  git config user.email "${email}"
+fi
+
+# Set user.github.login.name locally if it's not set globally
+if [[ -z $(git config --global --get user.github.login.name) ]]; then
+  git config user.github.login.name "${username}"
+fi
+
+# Set user.github.token locally if it's not set globally
+if [[ -z $(git config --global --get user.github.token) ]]; then
+  git config user.github.token "${token}"
+fi
+
+# Set credential.helper globally if it's not set yet
+if [[ -z $(git config --global --get credential.helper) ]]; then
+  git config --global credential.helper 'cache --timeout=1800'
+fi
+
+# Set push.default globally if it's not set yet
+if [[ -z $(git config --global --get push.default) ]]; then
+  git config --global push.default simple
+fi
 
 # Verify the GitHub repo exists before trying to add it as a remote
 repo_exists=$(curl -fsSL -H "Authorization: token ${token}" "https://api.github.com/repos/${username}/${repo}")
