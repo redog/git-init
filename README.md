@@ -1,8 +1,5 @@
 git-init
 ========
 
-# Configure Node git & github for oauth
-bash <(wget -qO - https://raw.githubusercontent.com/redog/git-init/master/init.sh
-
-# TODO Configure Node git and ssh keys?
-# bash <(wget -qO - https://raw.githubusercontent.com/redog/git-init/master/init.sh ssh
+# Get it and init it
+#bash <(wget -q) - https://raw.hithubusercontent.com/redog/git-init/master/init.sh

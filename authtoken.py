@@ -38,6 +38,7 @@ def main():
     name = input('Full Name: ')
     email = input('Email Address: ')
     username = input('Github username: ')
+    k
     password = getpass.getpass('Github password: ')
 	#No longer optional ?
     #note = safeinput(input('Note (optional): '))
