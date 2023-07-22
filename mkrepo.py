@@ -13,7 +13,6 @@ def validate_email(email):
         return False
 
 home = os.environ['HOME']
-cwd = os.getcwd()
 
 # Input and validation loop for Full Name
 while True:
@@ -72,6 +71,8 @@ if response.status_code == 201:
 else:
     print('Failed to create repository')
 
+os.chdir(./git-init/)
+cwd = os.getcwd()
 cmd = ['/bin/bash', cwd+'/configure.sh', name, email, username, token, repo]
 try:
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
