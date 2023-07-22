@@ -26,5 +26,6 @@ else
   exit 1
 fi
 
+git clone https://github.com/redog/$MYINIT
 export GITHUB_ACCESS_TOKEN="$pass"
 python3 ${MYINIT}/mkrepo.py
