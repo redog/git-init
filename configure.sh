@@ -33,9 +33,11 @@ cd "${repo}"
 git init
 
 # Verify the GitHub repo exists before trying to add it as a remote
-if ! curl -fsSL "https://github.com/${username}/${repo}" > /dev/null; then
+repo_exists=$(curl -fsSL -H "Authorization: token ${token}" "https://api.github.com/repos/${username}/${repo}")
+
+if [[ -z ${repo_exists} ]]; then
   echo "GitHub repo ${username}/${repo} does not exist"
   exit 1
 fi
 
-git remote add origin ttps://${token}@github.com/${username}/${repo}.git
+git remote add origin "https://${token}@github.com/${username}/${repo}.git"
