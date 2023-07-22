@@ -71,7 +71,7 @@ if response.status_code == 201:
 else:
     print('Failed to create repository')
 
-os.chdir(./git-init/)
+os.chdir('./git-init/')
 cwd = os.getcwd()
 cmd = ['/bin/bash', cwd+'/configure.sh', name, email, username, token, repo]
 try:
