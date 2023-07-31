@@ -38,14 +38,12 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
   # Linux
   pass=$(secret-tool lookup github accesstoken 2>/dev/null)
-  # Replace this with the actual command for Linux
   if [[ $? -ne 0  ]]; then
     echo "Problem retrieving GitHub access token"
     exit 1
   fi
 elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
   # Windows
-  # Replace this with the actual command for Windows
   echo "Windows not yet supported"
   exit 1
 else
@@ -57,11 +55,16 @@ fi
 gitusername=$(git config user.github.login.name)
 
 if [[ $? -ne 0 ]]; then
-  echo "Github login name not set. Configure with git. "
-  exit 1
+#  echo "Github login name not set. Configure with git. "
+  read -p "Enter your Github username: " gitusername
 fi
 
 export GITHUB_ACCESS_TOKEN="$pass"
+
+if [[ $? -ne 0 ]]; then
+  echo "Github Access Token not set check environment."
+  exit 1
+fi
 
 echo ""
 echo "What would you like to do?"
