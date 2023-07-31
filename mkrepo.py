@@ -12,29 +12,48 @@ def validate_email(email):
         print("Invalid email address. Please try again.")
         return False
 
+def get_git_config():
+    result = subprocess.run(['git', 'config', '--global', '-l'], stdout=subprocess.PIPE)
+    config = {}
+    if result.returncode == 0:
+        lines = result.stdout.decode().strip().split('\n')
+        for line in lines:
+            key, value = line.split('=', 1)
+            config[key] = value
+    return config
+
+# Get Git configuration
+git_config = get_git_config()
+
 home = os.environ['HOME']
 
-# Input and validation loop for Full Name
-while True:
-    name = input('Full Name: ')
-    if name:
-        break
-    else:
-        print("Full name cannot be empty. Please try again.")
+# Retrieve or prompt for Full Name
+name = git_config.get('user.name')
+if not name:
+    while True:
+        name = input('Full Name: ')
+        if name:
+            break
+        else:
+            print("Full name cannot be empty. Please try again.")
 
-# Input and validation loop for Email Address
-while True:
-    email = input('Email Address: ')
-    if validate_email(email):
-        break
+# Retrieve or prompt for Email Address
+email = git_config.get('user.email')
+if not email:
+    while True:
+        email = input('Email Address: ')
+        if validate_email(email):
+            break
 
-# Input and validation loop for Github username
-while True:
-    username = input('Github username: ')
-    if username:
-        break
-    else:
-        print("Github username cannot be empty. Please try again.")
+# Prompt for Github username
+username = git_config.get('user.github.login.name')
+if not username:
+    while True:
+        username = input('Github username: ')
+        if username:
+            break
+        else:
+            print("Github username cannot be empty. Please try again.")
 
 # Input and validation loop for repo name
 while True:
