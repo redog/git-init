@@ -61,7 +61,7 @@ fi
 
 export GITHUB_ACCESS_TOKEN="$pass"
 
-if [[ $? -ne 0 ]]; then
+if [[ -z $GITHUB_ACCESS_TOKEN ]]; then
   echo "Github Access Token not set check environment."
   exit 1
 fi
@@ -72,6 +72,7 @@ choose "Create a new repository" "Clone an existing repository"
 
 
 if [[ $choice -eq 0 ]]; then
+  git clone https://github.com/$gitusername/${MYINIT}
   python3 ${MYINIT}/mkrepo.py
 else 
   repos=$(get_repositories "${GITHUB_ACCESS_TOKEN}")
@@ -79,6 +80,6 @@ else
   chosen_repo=$(choose ${repo_array[@]})
   git clone https://github.com/${chosen_repo}
   git -C "./${chosen_repo#*/}" config "user.github.token" "${pass}"
-  git -C "./${chosen_repo#*/}" config "remote.origin.url" "https://${gitusername}:${pass}@github.com/${githubusername}${chosen_repo}"
+  git -C "./${chosen_repo#*/}" config "remote.origin.url" "https://${gitusername}:${pass}@github.com/${chosen_repo}.git"
 #python3 ${MYINIT}/mkrepo.py
 fi
