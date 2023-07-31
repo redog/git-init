@@ -24,7 +24,7 @@ get_repositories() {
   username="$2"
   curl -H "Authorization: token ${token}" "https://api.github.com/user/repos" 2>&1 | \
     grep -o '"full_name":\s*"[^"]*"' | \
-    sed -E 's/"full_name":\s*"([^"]*)"/\1/'
+    sed -E 's/"full_name":[[:space:]]*"([^"]*)"/\1/'
 }
 
 # Attempt to retrieve the password
