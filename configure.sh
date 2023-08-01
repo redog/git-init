@@ -63,5 +63,9 @@ if [[ -z ${repo_exists} ]]; then
 fi
 
 git remote add origin "https://${token}@github.com/${username}/${repo}.git"
+echo  "${repo} by ${username}" > README.md 
+curl https://www.gnu.org/licenses/gpl-3.0.txt > LICENSE
+git add .
+git commit -m "Initial commit"
+git branch -M main 
 git push --set-upstream origin main
-
