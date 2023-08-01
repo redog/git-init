@@ -63,3 +63,5 @@ if [[ -z ${repo_exists} ]]; then
 fi
 
 git remote add origin "https://${token}@github.com/${username}/${repo}.git"
+git push --set-upstream origin main
+
