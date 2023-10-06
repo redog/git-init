@@ -82,7 +82,7 @@ else
     repos=$(get_repositories "${GITHUB_ACCESS_TOKEN}")
     IFS=$'\n' read -rd '' -a repo_array <<<"$repos"
     chosen_repo=$(choose ${repo_array[@]})
-    git clone https://github.com/${chosen_repo}
+    git clone https://$pass@github.com/${chosen_repo}
     git -C "./${chosen_repo#*/}" config "user.github.token" "${pass}"
     git -C "./${chosen_repo#*/}" config "remote.origin.url" "https://${gitusername}:${pass}@github.com/${chosen_repo}.git"
 fi
