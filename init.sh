@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 MYINIT="git-init"
 choice=-1
@@ -34,14 +34,14 @@ get_repositories() {
 # Attempt to retrieve the password
 if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS
-    pass=$(security find-generic-password -s 'github' -w 2>/dev/null)
+    pass=$(bws secret get 857d0c2c-cfe0-4e6d-995c-b1690020f8fb -o tsv | tail -n 1 | awk '{print $3}' 2>/dev/null)
     if [[ $? -ne 0 ]]; then
         echo "Failed to retrieve GitHub access token"
         exit 1
     fi
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
    # Linux
-   pass=$(secret-tool lookup github accesstoken 2>/dev/null)
+   pass=$(bws secret get 857d0c2c-cfe0-4e6d-995c-b1690020f8fb -o tsv | tail -n 1 | awk '{print $3}' 2>/dev/null)
    if [[ $? -ne 0  ]]; then
        echo "Problem retrieving GitHub access token"
        exit 2
