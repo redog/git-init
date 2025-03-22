@@ -3,6 +3,7 @@ git-init
 
 # Prerequsites:
   1.) bws - bitwarden sdk (secrets manager)
+  
   2.) requests python module
 
 python -m venv venv
