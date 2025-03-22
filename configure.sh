@@ -24,7 +24,7 @@ configure_git() {
     if ! validate_input "$config_value"; then
         echo "Invalid configuration value for $config_name"
         return 1
-    }
+    fi
 
     if [[ "$scope" == "global" ]]; then
         git config --global "$config_name" "$config_value"
@@ -40,9 +40,9 @@ if [[ $# -ne 5 ]]; then
 fi
 
 # Assign arguments to named variables
-name="$1"
-email="$2"
-username="$3"
+name="$(echo "$1" | tr -d '[:space:]')" # Trim spaces
+email="$(echo "$2" | tr -d '[:space:]')" # Trim spaces
+username="$(echo "$3" | tr -d '[:space:]')" # Trim spaces
 token="$4"
 repo="$5"
 

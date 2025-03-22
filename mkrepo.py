@@ -13,13 +13,14 @@ def validate_email(email):
         return False
 
 def get_git_config():
-    result = subprocess.run(['git', 'config', '--global', '-l'], stdout=subprocess.PIPE)
+    result = subprocess.run(['git', 'config', '--global', '-l'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     config = {}
     if result.returncode == 0:
         lines = result.stdout.decode().strip().split('\n')
         for line in lines:
-            key, value = line.split('=', 1)
-            config[key] = value
+            if '=' in line: # Add this check
+                key, value = line.split('=', 1)
+                config[key] = value
     return config
 
 # Get Git configuration
