@@ -13,6 +13,8 @@ python -m venv venv
 source venv/bin/activate
 
 pip install requests
+
+pip install keyring
   
 read BITWARDEN_ACCESS_TOKEN
 
