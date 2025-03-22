@@ -31,6 +31,11 @@ get_repositories() {
     echo "$response" | grep -o '"full_name":\s*"[^"]*"' | sed -E 's/"full_name":[[:space:]]*"([^"]*)"/\1/'
 }
 
+if [[ -z $BWS_ACCESS_TOKEN ]]; then
+    echo "Bitwarden Access Token not set check environment."
+    exit 6
+fi
+
 # Attempt to retrieve the password
 if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS
