@@ -6,6 +6,8 @@ git-init
   
   2.) requests python module
 
+  3.) git credential manager
+
 python -m venv venv
 
 ./venv/bin/activate
