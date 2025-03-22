@@ -89,9 +89,8 @@ else
   chosen_repo=$(choose ${repo_array[@]})
   git clone https://github.com/${chosen_repo}
   cd "${chosen_repo#*/}" || exit 1
-  # Configure git to use the credential manager.  This is the key change.
+  # Configure git to use the credential manager.
   git config credential.helper 'manager'
-  # No longer set the token in the remote URL.
   git config "remote.origin.url" "https://github.com/${chosen_repo}.git"
 fi
 
