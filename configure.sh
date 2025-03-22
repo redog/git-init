@@ -74,7 +74,7 @@ if [[ -z $(git config --global --get user.email) ]]; then
     configure_git "user.email" "${email}" "local"
 fi
 
-# Instead of storing the token in git config, use git credential store
+# Use git credential store
 if [[ -n "${token}" ]]; then
     # Store credentials in OS credential manager
     if command -v git-credential-manager &> /dev/null; then
