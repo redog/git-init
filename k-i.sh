@@ -33,5 +33,3 @@ if [ -z "$BW_CLIENTID" ] || [ -z "$BW_CLIENTSECRET" ]; then
   exit 1
 fi
 export BW_CLIENTID BW_CLIENTSECRET
-
-exit 0
