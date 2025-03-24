@@ -30,7 +30,7 @@ rm -rf "/tmp/${FILENAME}" "/tmp/bws-temp"
 
 # Check if INSTALL_DIR is in PATH
 if [[ ":$PATH:" != *":${INSTALL_DIR}:"* ]]; then
-    echo "Add ${INSTALL_DIR} to PATH in ~/.bashrc"
+    echo "Adding ${INSTALL_DIR} to PATH in ~/.bashrc"
     echo "export PATH=\"\$PATH:${INSTALL_DIR}\"" >> "${HOME}/.bashrc"
     echo "Please run 'source ~/.bashrc' or start a new terminal session"
 fi
