@@ -24,8 +24,8 @@ if [ -z "$secret_data" ]; then
 fi
 
 
-BW_CLIENTID=$(echo "$secret_data" | grep '"key": ' -A 1 | sed 's/.*"\(.*\)".*/\1/')
-BW_CLIENTSECRET=$(echo "$secret_data" | grep '"value": ' -A 1 | sed 's/.*"\(.*\)".*/\1/')
+BW_CLIENTID=$(echo "$secret_data" | awk -F'"' '{for(i=1;i<=NF;i++){if($i=="key"){print $(i+2)}}}')
+BW_CLIENTSECRET=$(echo "$secret_data" | awk -F'"' '{for(i=1;i<=NF;i++){if($i=="value"){print $(i+2)}}}')
 
 # Check if the variables were populated.
 if [ -z "$BW_CLIENTID" ] || [ -z "$BW_CLIENTSECRET" ]; then
