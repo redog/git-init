@@ -1,3 +1,15 @@
+#!/bin/bash
+
+# --- Configuration ---
+# AWKEYS_FOLDER_ID="${AWKEYS_FOLDER_ID:?Error: AWKEYS_FOLDER_ID is not set. Please set it to the Bitwarden folder ID.}" #Commented out now that we find folder.
+
+# --- Functions ---
+
+# Check if Bitwarden is logged in
+bw_is_logged_in() {
+  bw status | grep -q '"status":"unlocked"'
+}
+
 # List SSH keys in the AWKeys folder
 list_keys() {
   if ! bw_is_logged_in; then
@@ -23,7 +35,7 @@ list_keys() {
   echo "Available SSH Keys in Bitwarden (AWKeys folder):"
   bw list items --folderid "$folder_id" | jq -r '.[] | select(.type == 1) | .name'
 }
-# ... (bw_is_logged_in and list_keys remain the same) ...
+
 get_key() {
     if ! bw_is_logged_in; then
         echo "Error: Bitwarden is not logged in."
@@ -69,9 +81,35 @@ get_key() {
 
     echo "Key '$key_name' retrieved and saved to '$key_path'"
 }
+
 # --- Main Script ---
-# ... (Help and 'list' case remain the same) ...
+
+# Check if Bitwarden CLI is installed
+if ! command -v bw &> /dev/null; then
+  echo "Error: Bitwarden CLI (bw) is not installed."
+  exit 1
+fi
+
+#Default to showing help
+if [ -z "$1" ]; then
+   echo "Usage:"
+   echo "  $0 list     - List available SSH keys"
+   echo "  $0 get <keyname>   - Get a key"
+   echo "Further actions will be available."
+   exit 0
+fi
+
+case "$1" in
+  list)
+    list_keys
+    ;;
   get)
     get_key "$2"
     ;;
-# ... (rest of the script) ...
+  *)
+    echo "Invalid command: $1"
+    exit 1
+    ;;
+esac
+
+exit 0
