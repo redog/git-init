@@ -1,66 +1,55 @@
 #!/bin/bash
 
-set -euo pipefail
+# Define variables
+BW_VERSION="2025.2.0"
+DOWNLOAD_URL="https://github.com/bitwarden/clients/releases/download/cli-v${BW_VERSION}/bw-linux-${BW_VERSION}.zip"
+INSTALL_DIR="/usr/local/bin"
 
-# Configuration
-VERSION="2025.2.0"
-FILENAME="bw-linux-${VERSION}.zip"
-DOWNLOAD_URL="https://github.com/bitwarden/clients/releases/download/cli-v${VERSION}/${FILENAME}"
-INSTALL_DIR="${HOME}/.local/bin"
-CHECKSUM_URL="https://github.com/bitwarden/clients/releases/download/cli-v${VERSION}/bw-linux-sha256-${VERSION}.txt"
+# Print start message
+echo "Starting Bitwarden CLI installation..."
 
-# Create installation directory if it doesn't exist
-mkdir -p "${INSTALL_DIR}"
+# Check if wget is installed
+if ! command -v wget &> /dev/null; then
+    echo "wget is not installed. Installing wget..."
+    sudo apt-get update && sudo apt-get install wget -y
+fi
 
-# Download the zip file and checksum
+# Check if unzip is installed
+if ! command -v unzip &> /dev/null; then
+    echo "unzip is not installed. Installing unzip..."
+    sudo apt-get update && sudo apt-get install unzip -y
+fi
+
+# Create temporary directory
+TEMP_DIR=$(mktemp -d)
+cd "$TEMP_DIR"
+
+# Download the Bitwarden CLI
 echo "Downloading Bitwarden CLI..."
-curl -L -o "/tmp/${FILENAME}" "${DOWNLOAD_URL}"
-curl -L -o "/tmp/checksum.txt" "${CHECKSUM_URL}"
+wget "$DOWNLOAD_URL" -O bw.zip
 
-# Verify checksum
-echo "Verifying download..."
-cd /tmp
-if ! sha256sum -c checksum.txt; then
-    echo "Checksum verification failed!"
-    rm -f "/tmp/${FILENAME}" "/tmp/checksum.txt"
+# Unzip the package
+echo "Extracting files..."
+unzip bw.zip
+
+# Make the binary executable
+chmod +x bw
+
+# Move the binary to the installation directory
+echo "Installing Bitwarden CLI to $INSTALL_DIR..."
+sudo mv bw "$INSTALL_DIR"
+
+# Clean up
+cd - > /dev/null
+rm -rf "$TEMP_DIR"
+
+# Verify installation
+if command -v bw &> /dev/null; then
+    echo "Bitwarden CLI has been successfully installed!"
+    echo "Version installed: $(bw --version)"
+else
+    echo "Installation failed!"
     exit 1
 fi
 
-# Unzip to temporary location
-echo "Extracting..."
-unzip -o "/tmp/${FILENAME}" -d "/tmp/bw-temp"
-
-# Move binary to installation directory
-echo "Installing..."
-mv "/tmp/bw-temp/bw" "${INSTALL_DIR}/bw"
-chmod +x "${INSTALL_DIR}/bw"
-
-# Clean up
-rm -rf "/tmp/${FILENAME}" "/tmp/bw-temp" "/tmp/checksum.txt"
-
-# Check if INSTALL_DIR is in PATH
-if [[ ":$PATH:" != *":${INSTALL_DIR}:"* ]]; then
-    echo "Adding ${INSTALL_DIR} to PATH in ~/.bashrc"
-    echo "export PATH=\"\$PATH:${INSTALL_DIR}\"" >> "${HOME}/.bashrc"
-    echo "Please run 'source ~/.bashrc' or start a new terminal session"
-fi
-
-# Setup shell completions
-if [ -d "${HOME}/.local/share/bash-completion/completions" ]; then
-    echo "Setting up bash completion..."
-    bw completion --shell bash > "${HOME}/.local/share/bash-completion/completions/bw"
-fi
-
-if [ -d "${HOME}/.local/share/zsh/site-functions" ]; then
-    echo "Setting up zsh completion..."
-    mkdir -p "${HOME}/.local/share/zsh/site-functions"
-    bw completion --shell zsh > "${HOME}/.local/share/zsh/site-functions/_bw"
-fi
-
-echo "Installation complete! bw has been installed to ${INSTALL_DIR}/bw"
-echo "Verify installation with: bw --version"
-echo ""
-echo "To get started:"
-echo "1. Run 'bw login' to log in to your Bitwarden account"
-echo "2. Run 'bw unlock' to unlock your vault"
-echo "3. Run 'bw --help' to see available commands"
+echo "You can now use the 'bw' command to access Bitwarden CLI."
