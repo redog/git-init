@@ -116,9 +116,13 @@ create_key() {
   # Read the private key content
   local private_key=$(cat "$key_path")
 
-  # Create a new secure note in Bitwarden
-  local bw_item=$(bw encode --input "$private_key" | jq -n --arg name "$key_name" --arg folderId "$folder_id" --arg notes "$(cat)" \
+  # Create a new secure note in Bitwarden *CORRECTED*
+  local bw_item=$(jq -n \
+    --arg name "$key_name" \
+    --arg folderId "$folder_id" \
+    --arg notes "$private_key" \
     '{type: 1, name: $name, notes: $notes, folderId: $folderId}')
+
   bw create item "$bw_item"
     if [ $? -ne 0 ]; then
       echo "Error: Failed to save the key to Bitwarden. The local key has been created."
@@ -129,6 +133,7 @@ create_key() {
 
   echo "SSH key '$key_name' created and saved to '$key_path' and Bitwarden."
 }
+
 # --- Main Script ---
 
 # Check if Bitwarden CLI is installed
