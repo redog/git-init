@@ -10,7 +10,7 @@ if ! command -v bws &> /dev/null; then
 fi
 
 # Retrieve the secret data.
-secret_data=$(bws get secret "$SECRET_ID" 2> /dev/null)
+secret_data=$(bws secret get "$SECRET_ID" 2> /dev/null)
 
 # Check if the secret retrieval was successful
 if [ $? -ne 0 ]; then
