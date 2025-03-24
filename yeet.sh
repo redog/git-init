@@ -17,20 +17,15 @@ list_keys() {
     exit 1
   fi
 
-  # Get the folder ID using bw list folders and awk
-  local folder_id=$(bw list folders --search AWKeys | awk -F'\t' '$2 ~ /AWKeys/ {print $1}')
+  # Get the folder ID using bw list folders and jq
+  local folder_id=$(bw list folders --search AWKeys | jq -r '.[] | select(.name == "AWKeys") | .id')
 
   if [ -z "$folder_id" ]; then
     echo "Error: Could not find the AWKeys folder ID."
     exit 1
   fi
-  # Check for multiple matches, just in case. This is a safety net.
-  if [ $(echo "$folder_id" | wc -l) -gt 1 ]; then
-      echo "Error: Multiple folders found matching 'AWKeys'.  Please ensure the folder name is unique."
-      echo "Found IDs:"
-      echo "$folder_id"
-      exit 1
-  fi
+
+  # We no longer need the multiple ID check since we're selecting by name with jq.
 
   echo "Available SSH Keys in Bitwarden (AWKeys folder):"
   bw list items --folderid "$folder_id" | jq -r '.[] | select(.type == 1) | .name'
@@ -48,15 +43,12 @@ get_key() {
     fi
 
     # Get the folder ID (same logic as in list_keys)
-    local folder_id=$(bw list folders --search AWKeys | awk -F'\t' '$2 ~ /AWKeys/ {print $1}')
+    local folder_id=$(bw list folders --search AWKeys | jq -r '.[] | select(.name == "AWKeys") | .id')
     if [ -z "$folder_id" ]; then
       echo "Error: Could not find the AWKeys folder ID."
       exit 1
     fi
-    if [ $(echo "$folder_id" | wc -l) -gt 1 ]; then
-        echo "Error: Multiple folders found matching 'AWKeys'."
-        exit 1
-    fi
+  # We no longer need the multiple ID check since we're selecting by name with jq.
 
     # Get the item ID by searching for the key name within the folder
     local item_id=$(bw list items --folderid "$folder_id" | jq -r --arg key_name "$key_name" '.[] | select(.type == 1 and .name == $key_name) | .id')
