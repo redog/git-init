@@ -32,5 +32,6 @@ if [ -z "$BW_CLIENTID" ] || [ -z "$BW_CLIENTSECRET" ]; then
   echo "Error: Could not extract client_id or client_secret from the secret data.  Check the field names in your secret."
   exit 1
 fi
+export BW_CLIENTID BW_CLIENTSECRET
 
 exit 0
