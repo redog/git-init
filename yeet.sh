@@ -80,54 +80,50 @@ create_key() {
     exit 1
   fi
 
-  # Generate default key name: <hostname>-<YYYY-MM>
+  # Generate default key name
   local default_key_name=$(hostname -s)-$(date +%Y-%m)
 
-  # Prompt for the key name, with a default value
+  # Prompt for key name, with default
   read -r -p "Enter a name for the new SSH key (default: $default_key_name): " key_name
-  key_name="${key_name:-$default_key_name}" # Use default if input is empty
+  key_name="${key_name:-$default_key_name}"
 
   if [ -z "$key_name" ]; then
     echo "Error: Key name cannot be empty."
     exit 1
   fi
 
-  # Get the folder ID (same logic as in list_keys and get_key)
+  # Get folder ID
   local folder_id=$(bw list folders --search AWKeys | jq -r '.[] | select(.name == "AWKeys") | .id')
   if [ -z "$folder_id" ]; then
     echo "Error: Could not find the AWKeys folder ID."
     exit 1
   fi
 
-  # Generate the SSH key pair
+  # Generate SSH key pair
   local key_path="$HOME/.ssh/$key_name"
   if [ -f "$key_path" ]; then
       echo "Error: A key file already exists at '$key_path'."
       echo "       Please choose a different name or delete the existing file."
       exit 1
   fi
-  ssh-keygen -t ed25519 -f "$key_path" -N ""  # -N "" for no passphrase
+  ssh-keygen -t ed25519 -f "$key_path" -N ""
 
-  if [ $? -ne 0 ]; then # Check exit status of ssh-keygen
+  if [ $? -ne 0 ]; then
       echo "Error: SSH key generation failed."
       exit 1
   fi
 
-  # Read the private key content
+  # Read private key content
   local private_key=$(cat "$key_path")
 
-  # Create a new secure note in Bitwarden *CORRECTED*
-  local bw_item=$(jq -n \
-    --arg name "$key_name" \
-    --arg folderId "$folder_id" \
-    --arg notes "$private_key" \
-    '{type: 1, name: $name, notes: $notes, folderId: $folderId}')
+  # Create secure note in Bitwarden (COMPACT JSON)
+  local bw_item=$(jq -n --arg name "$key_name" --arg folderId "$folder_id" --arg notes "$private_key" '{type:1,name:$name,notes:$notes,folderId:$folderId}')
 
   bw create item "$bw_item"
-    if [ $? -ne 0 ]; then
-      echo "Error: Failed to save the key to Bitwarden. The local key has been created."
-      exit 1
-    fi
+  if [ $? -ne 0 ]; then
+    echo "Error: Failed to save the key to Bitwarden. The local key has been created."
+    exit 1
+  fi
 
   chmod 600 "$key_path"
 
