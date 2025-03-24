@@ -2,7 +2,7 @@ git-init
 ========
 
 # Prerequsites
-  1. Curl
+  1. Curl - unzip
   
   1. bws - bitwarden sdk (secrets manager) & bw - bitwarden cli
     
