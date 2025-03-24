@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Loads the Bitwarden API Key into environment variables from secrets manager.
+
 # Secret ID
 SECRET_ID="c368bb97-1837-46d1-ad26-b2aa0103cb25"
 
