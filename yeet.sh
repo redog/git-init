@@ -88,11 +88,10 @@ create_key() {
 # Create the Bitwarden item JSON (Identity type = 5)
   local bw_item=$(jq -n \
     --arg name "$key_name" \
-    --arg folderId "$folder_id" \
     --arg privateKey "$private_key" \
     --arg publicKey "$public_key" \
     --arg keyFingerprint "$key_fingerprint" \
-    '{type: 5, name: $name, folderId: $folderId, sshKey: { privateKey: $privateKey, publicKey: $publicKey, keyFingerprint: $keyFingerprint }}')
+    '{object: item, type: 5, name: $name, sshKey: { privateKey: $privateKey, publicKey: $publicKey, keyFingerprint: $keyFingerprint }}')
 
   bw create item "$bw_item"
   if [ $? -ne 0 ]; then
