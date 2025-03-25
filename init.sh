@@ -3,6 +3,12 @@
 MYINIT="git-init"
 choice=-1
 
+if [[ -f "config.env" ]]; then
+  source "config.env"
+else
+  echo "Warning: config.env file not found." >&2
+fi
+exit 1
 choose() {
   options=("$@")
   for i in "${!options[@]}"; do
@@ -39,14 +45,14 @@ fi
 # Attempt to retrieve the password
 if [[ "$OSTYPE" == "darwin"* ]]; then
   # macOS
-  pass=$(bws secret get 857d0c2c-cfe0-4e6d-995c-b1690020f8fb -o tsv | tail -n 1 | awk '{print $3}' 2>/dev/null)
+  pass=$(bws secret get ${GH_TOKEN_ID} -o tsv | tail -n 1 | awk '{print $3}' 2>/dev/null)
   if [[ $? -ne 0 ]]; then
     echo "Failed to retrieve GitHub access token"
     exit 1
   fi
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
   # Linux
-  pass=$(bws secret get 857d0c2c-cfe0-4e6d-995c-b1690020f8fb -o tsv | tail -n 1 | awk '{print $3}' 2>/dev/null)
+  pass=$(bws secret get ${GH_TOKEN_ID} -o tsv | tail -n 1 | awk '{print $3}' 2>/dev/null)
   if [[ $? -ne 0  ]]; then
     echo "Problem retrieving GitHub access token"
     exit 2
@@ -90,11 +96,10 @@ if [[ $choice -eq 0 ]]; then
     echo "Please run this script from outside of a git repository."
     exit 1
   elif [[ -z "$SCRIPT_DIR" || "$SCRIPT_DIR" == "." ]]; then
-    # Assuming curl execution or similar
     git clone https://github.com/$gitusername/${MYINIT}
   else
     # Script is being run from the filesystem, but not within a git repo
-    git clone https://github.com/$gitusername/${MYINIT} "$MYINIT" # Clone into a directory named MYINIT
+    git clone https://github.com/$gitusername/${MYINIT} "$MYINIT"
   fi
 
   python3 ${MYINIT}/mkrepo.py

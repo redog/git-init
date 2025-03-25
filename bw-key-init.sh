@@ -1,9 +1,13 @@
 #!/bin/bash
 
 # Loads the Bitwarden API Key into environment variables from secrets manager.
-
+if [[ -f "config.env" ]]; then
+  source "config.env"
+else
+  echo "Warning: config.env file not found." >&2
+fi
 # Secret ID
-SECRET_ID="c368bb97-1837-46d1-ad26-b2aa0103cb25"
+SECRET_ID="$BW_API_KEY_ID"
 
 # Check if bws is installed.
 if ! command -v bws &> /dev/null; then
