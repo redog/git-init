@@ -91,7 +91,7 @@ create_key() {
     --arg privateKey "$private_key" \
     --arg publicKey "$public_key" \
     --arg keyFingerprint "$key_fingerprint" \
-    '{object: item, type: 5, name: $name, sshKey: { privateKey: $privateKey, publicKey: $publicKey, keyFingerprint: $keyFingerprint }}')
+    '{type: 5, name: $name, sshKey: { privateKey: $privateKey, publicKey: $publicKey, keyFingerprint: $keyFingerprint }}')
 
   bw create item "$bw_item"
   if [ $? -ne 0 ]; then
