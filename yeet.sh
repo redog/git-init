@@ -27,7 +27,7 @@ get_key() {
         exit 1
     fi
 
-    local item_id=$(bw list items | jq -r --arg key_name "$key_name" '.[] | select(.type == 5 and .name == $key_name) | .id')
+    local item_id=$(bw list items | jq -r --arg key_name "$key_name" '.| select(.type == 5 and .name == $key_name) | .id')
     if [ -z "$item_id" ]; then
         echo "Error: Could not find a key named '$key_name'."
         exit 1
@@ -48,10 +48,15 @@ get_key() {
     chmod 600 "$key_path"
     echo "Private key '$key_name' saved to '$key_path'"
 
-    # Add public key to authorized_keys
-    echo "$public_key" >> "$HOME/.ssh/authorized_keys"
-    chmod 600 "$HOME/.ssh/authorized_keys"
-    echo "Public key added to ~/.ssh/authorized_keys"
+    # Ask for confirmation before adding to authorized_keys
+    read -r -p "Add public key to ~/.ssh/authorized_keys? (y/n): " confirm
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        echo "$public_key" >> "$HOME/.ssh/authorized_keys"
+        chmod 600 "$HOME/.ssh/authorized_keys" # Make sure permissions are correct after appending
+        echo "Public key added to ~/.ssh/authorized_keys"
+    else
+        echo "Public key not added to ~/.ssh/authorized_keys"
+    fi
 }
 
 create_key() {
@@ -102,6 +107,16 @@ create_key() {
 
   chmod 600 "$key_path"
   echo "SSH key '$key_name' created and saved to '$key_path' and Bitwarden."
+
+  # Ask for confirmation before adding to authorized_keys
+  read -r -p "Add public key to ~/.ssh/authorized_keys? (y/n): " confirm
+  if [[ "$confirm" =~ ^[Yy]$ ]]; then
+      echo "$public_key" >> "$HOME/.ssh/authorized_keys"
+      chmod 600 "$HOME/.ssh/authorized_keys" # Ensure correct permissions after appending
+      echo "Public key added to ~/.ssh/authorized_keys"
+  else
+      echo "Public key not added to ~/.ssh/authorized_keys"
+  fi
 }
 
 # --- Main Script ---
