@@ -58,7 +58,7 @@ get_key() {
     read -r -p "Add public key to ~/.ssh/authorized_keys? (y/n): " confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         echo "$public_key" >> "$HOME/.ssh/authorized_keys"
-        chmod 600 "$HOME/.ssh/authorized_keys"
+        chmod 600 "$HOME/.ssh/authorized_keys"  # Ensure authorized_keys has correct permissions
         echo "Public key added to ~/.ssh/authorized_keys"
     else
         echo "Public key not added to ~/.ssh/authorized_keys"
@@ -92,22 +92,19 @@ create_key() {
     exit 1
   fi
 
-  local private_key=$(<"$key_path")
-  local public_key=$(<"$key_path.pub")
+  local private_key=$(cat "$key_path") # Use cat, not command substitution
+  local public_key=$(cat "$key_path.pub") # Use cat, not command substitution
   local key_fingerprint=$(ssh-keygen -lf "$key_path" | awk '{print $2}')
 
   log "Generated Private Key: $private_key"
   log "Generated Public Key: $public_key"
   log "Generated Fingerprint: $key_fingerprint"
-
+  
+  # Correctly populate the .sshKey object
   bw get template item | \
-    jq '.type=5' | \
-    jq --arg name "$key_name" '.name=$name' | \
-    jq --arg privateKey "$private_key" '.sshKey.privateKey=$privateKey' | \
-    jq --arg publicKey "$public_key" '.sshKey.publicKey=$publicKey' | \
-    jq --arg keyFingerprint "$key_fingerprint" '.sshKey.fingerprint=$keyFingerprint' | \
-    bw encode --raw | \
-    bw create item 2> /dev/null
+    jq --arg name "$key_name" --arg privateKey "$private_key" --arg publicKey "$public_key" --arg keyFingerprint "$key_fingerprint" '. + {type: 5, name: $name, sshKey: {privateKey: $privateKey, publicKey: $publicKey, keyFingerprint: $keyFingerprint}}' | \
+    bw encode | \
+    bw create item
 
   if [ $? -ne 0 ]; then
     echo "Error: Failed to save the key to Bitwarden. The local key has been created."
@@ -120,7 +117,7 @@ create_key() {
   read -r -p "Add public key to ~/.ssh/authorized_keys? (y/n): " confirm
   if [[ "$confirm" =~ ^[Yy]$ ]]; then
       echo "$public_key" >> "$HOME/.ssh/authorized_keys"
-      chmod 600 "$HOME/.ssh/authorized_keys"
+      chmod 600 "$HOME/.ssh/authorized_keys" # Ensure authorized_keys has correct permissions.
       echo "Public key added to ~/.ssh/authorized_keys"
   else
       echo "Public key not added to ~/.ssh/authorized_keys"
@@ -133,11 +130,11 @@ if ! command -v bw &> /dev/null; then
 fi
 
 if [ -z "$1" ]; then
-   echo "Usage:"
-   echo "  $0 list     - List available SSH keys"
-   echo "  $0 get <keyname>   - Get a key and add pub key to authorized_keys"
-   echo "  $0 create   - Creates and upload a key"
-   exit 0
+    echo "Usage:"
+    echo "  $0 list      - List available SSH keys"
+    echo "  $0 get <keyname> - Get a key and add pub key to authorized_keys"
+    echo "  $0 create    - Creates and upload a key"
+    exit 0
 fi
 
 case "$1" in
