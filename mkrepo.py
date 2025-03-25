@@ -90,7 +90,7 @@ if response.status_code == 201:
 else:
     print('Failed to create repository')
 
-cmd = ['/bin/bash', './configure.sh', name, email, username, token, repo]
+cmd = ['/bin/bash', './git-init/configure.sh', name, email, username, token, repo]
 try:
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = p.communicate()

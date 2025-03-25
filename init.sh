@@ -81,7 +81,22 @@ choose "Create a new repository" "Clone an existing repository"
 
 
 if [[ $choice -eq 0 ]]; then
-  git clone https://github.com/$gitusername/${MYINIT}
+  # Determine the script's directory
+  SCRIPT_DIR=$(dirname "$0")
+  # Check if we're inside a git repository
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    # Script is being run from within a git repo
+    echo "Script is running from within a git repository.  Further cloning is not recommended."
+    echo "Please run this script from outside of a git repository."
+    exit 1
+  elif [[ -z "$SCRIPT_DIR" || "$SCRIPT_DIR" == "." ]]; then
+    # Assuming curl execution or similar
+    git clone https://github.com/$gitusername/${MYINIT}
+  else
+    # Script is being run from the filesystem, but not within a git repo
+    git clone https://github.com/$gitusername/${MYINIT} "$MYINIT" # Clone into a directory named MYINIT
+  fi
+
   python3 ${MYINIT}/mkrepo.py
 else
   repos=$(get_repositories "${GITHUB_ACCESS_TOKEN}")
