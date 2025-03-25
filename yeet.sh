@@ -4,14 +4,91 @@ bw_is_logged_in() {
   bw status | grep -q '"status":"unlocked"'
 }
 
-list_keys() {
-  if ! bw_is_logged_in; then
-    echo "Error: Bitwarden is not logged in."
-    exit 1
-  fi
 
-  echo "Available SSH Keys in Bitwarden:"
-  bw list items | jq -r '.[] | select(.type == 5) | .name'
+list_keys() {
+    if ! bw_is_logged_in; then
+        echo "Error: Bitwarden is not logged in."
+        exit 1
+    fi
+
+    echo "Available SSH Keys in Bitwarden:"
+    echo "--------------------------------"
+    bw list items | jq -r '. |
+        select(.type == 5) |
+        . as $item |
+        if (.sshKey.metadata.expires != null and .sshKey.metadata.expires != "") then
+            $item.sshKey.metadata.expires as $exp_date |
+            if ($exp_date | length > 0) then
+                (($exp_date | fromdate) - (now | floor)) / 86400 | floor as $days_left |
+                if $days_left < 0 then
+                    "\(.name) (EXPIRED \(-$days_left) days ago)"
+                elif $days_left == 0 then
+                    "\(.name) (Expires TODAY)"
+                else
+                    "\(.name) (Expires in \($days_left) days)"
+                end
+            else
+                "\(.name) (No expiration)"
+            end
+        else
+            "\(.name) (No expiration)"
+        end'
+}
+
+check_key_expiration() {
+    local key_json="$1"
+    local expiration=$(echo "$key_json" | jq -r '.sshKey.metadata.expires')
+
+    if [ ! -z "$expiration" ] && [ "$expiration" != "null" ]; then
+        local today=$(date -I)
+        local days_until_expiration=$(( ( $(date -d "$expiration" +%s) - $(date -d "$today" +%s) ) / 86400 ))
+
+        if [ $days_until_expiration -lt 0 ]; then
+            echo "Warning: This key has expired ($days_until_expiration days ago)"
+            return 1
+        elif [ $days_until_expiration -eq 0 ]; then
+            echo "Warning: This key expires today!"
+            return 1
+        elif [ $days_until_expiration -le 30 ]; then
+            echo "Warning: This key will expire in $days_until_expiration days"
+        fi
+    fi
+    return 0
+}
+
+get_expiration_input() {
+    while true; do
+        echo "Set key expiration:"
+        echo "1) 365 days (default)"
+        echo "2) Custom days"
+        echo "3) Never expire"
+        read -r -p "Choose option [1-3]: " exp_choice
+
+        case "$exp_choice" in
+            ""|"1")
+                echo "$(date -d "+365 days" -I)"
+                return
+                ;;
+            "2")
+                while true; do
+                    read -r -p "Enter number of days (1-3650): " days
+                    if [[ "$days" =~ ^[0-9]+$ ]] && [ "$days" -ge 1 ] && [ "$days" -le 3650 ]; then
+                        echo "$(date -d "+$days days" -I)"
+                        return
+                    else
+                        echo "Please enter a valid number between 1 and 3650"
+                    fi
+                done
+                ;;
+            "3")
+                echo ""
+                return
+                ;;
+            *)
+                echo "Invalid option, please try again"
+                ;;
+        esac
+    done
 }
 
 get_key() {

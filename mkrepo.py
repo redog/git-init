@@ -13,14 +13,13 @@ def validate_email(email):
         return False
 
 def get_git_config():
-    result = subprocess.run(['git', 'config', '--global', '-l'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    result = subprocess.run(['git', 'config', '--global', '-l'], stdout=subprocess.PIPE)
     config = {}
     if result.returncode == 0:
         lines = result.stdout.decode().strip().split('\n')
         for line in lines:
-            if '=' in line: # Add this check
-                key, value = line.split('=', 1)
-                config[key] = value
+            key, value = line.split('=', 1)
+            config[key] = value
     return config
 
 # Get Git configuration
@@ -91,7 +90,7 @@ if response.status_code == 201:
 else:
     print('Failed to create repository')
 
-cmd = ['/bin/bash', './git-init/configure.sh', name, email, username, token, repo]
+cmd = ['/bin/bash', './configure.sh', name, email, username, token, repo]
 try:
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = p.communicate()
