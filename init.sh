@@ -3,12 +3,6 @@
 MYINIT="git-init"
 choice=-1
 
-if [[ -f "config.env" ]]; then
-  source "config.env"
-else
-  echo "Warning: config.env file not found." >&2
-fi
-exit 1
 choose() {
   options=("$@")
   for i in "${!options[@]}"; do
@@ -97,9 +91,16 @@ if [[ $choice -eq 0 ]]; then
     exit 1
   elif [[ -z "$SCRIPT_DIR" || "$SCRIPT_DIR" == "." ]]; then
     git clone https://github.com/$gitusername/${MYINIT}
+
   else
     # Script is being run from the filesystem, but not within a git repo
     git clone https://github.com/$gitusername/${MYINIT} "$MYINIT"
+  fi
+
+  if [[ -f "config.env" ]]; then
+    source "config.env"
+  else
+    echo "Warning: config.env file not found." >&2
   fi
 
   python3 ${MYINIT}/mkrepo.py
