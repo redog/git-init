@@ -1,9 +1,11 @@
 #!/bin/bash
 
-# --- Functions ---
-
 bw_is_logged_in() {
   bw status | grep -q '"status":"unlocked"'
+}
+
+log() {
+  echo "[DEBUG] $1"
 }
 
 list_keys() {
@@ -27,15 +29,21 @@ get_key() {
         exit 1
     fi
     local item_id=$(bw list items | jq -r --arg key_name "$key_name" '.[] | select(.type == 5 and .name == $key_name) | .id')
+    log "Item ID: $item_id"
+
     if [ -z "$item_id" ]; then
         echo "Error: Could not find a key named '$key_name'."
         exit 1
     fi
 
     local item_json=$(bw get item "$item_id")
+    log "Item JSON: $item_json"
+
     local private_key=$(echo "$item_json" | jq -r '.sshKey.privateKey')
     local public_key=$(echo "$item_json" | jq -r '.sshKey.publicKey')
 
+    log "Retrieved Private Key: $private_key"
+    log "Retrieved Public Key: $public_key"
 
     if [ -z "$private_key" ] || [ -z "$public_key" ]; then
         echo "Error: Could not retrieve the private or public key from Bitwarden."
@@ -47,11 +55,10 @@ get_key() {
     chmod 600 "$key_path"
     echo "Private key '$key_name' saved to '$key_path'"
 
-    # Ask for confirmation before adding to authorized_keys
     read -r -p "Add public key to ~/.ssh/authorized_keys? (y/n): " confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         echo "$public_key" >> "$HOME/.ssh/authorized_keys"
-        chmod 600 "$HOME/.ssh/authorized_keys" # Make sure permissions are correct after appending
+        chmod 600 "$HOME/.ssh/authorized_keys"
         echo "Public key added to ~/.ssh/authorized_keys"
     else
         echo "Public key not added to ~/.ssh/authorized_keys"
@@ -85,19 +92,22 @@ create_key() {
     exit 1
   fi
 
-  local private_key=$(cat "$key_path")
-  local public_key=$(cat "$key_path.pub")
+  local private_key=$(<"$key_path")
+  local public_key=$(<"$key_path.pub")
   local key_fingerprint=$(ssh-keygen -lf "$key_path" | awk '{print $2}')
 
-  # Corrected command using bw encode and a series of jq transformations
+  log "Generated Private Key: $private_key"
+  log "Generated Public Key: $public_key"
+  log "Generated Fingerprint: $key_fingerprint"
+
   bw get template item | \
     jq '.type=5' | \
     jq --arg name "$key_name" '.name=$name' | \
     jq --arg privateKey "$private_key" '.sshKey.privateKey=$privateKey' | \
     jq --arg publicKey "$public_key" '.sshKey.publicKey=$publicKey' | \
     jq --arg keyFingerprint "$key_fingerprint" '.sshKey.fingerprint=$keyFingerprint' | \
-    bw encode | \
-    bw create item
+    bw encode --raw | \
+    bw create item 2> /dev/null
 
   if [ $? -ne 0 ]; then
     echo "Error: Failed to save the key to Bitwarden. The local key has been created."
@@ -107,18 +117,15 @@ create_key() {
   chmod 600 "$key_path"
   echo "SSH key '$key_name' created and saved to '$key_path' and Bitwarden."
 
-  # Ask for confirmation before adding to authorized_keys
   read -r -p "Add public key to ~/.ssh/authorized_keys? (y/n): " confirm
   if [[ "$confirm" =~ ^[Yy]$ ]]; then
       echo "$public_key" >> "$HOME/.ssh/authorized_keys"
-      chmod 600 "$HOME/.ssh/authorized_keys" # Ensure correct permissions after appending
+      chmod 600 "$HOME/.ssh/authorized_keys"
       echo "Public key added to ~/.ssh/authorized_keys"
   else
       echo "Public key not added to ~/.ssh/authorized_keys"
   fi
 }
-
-# --- Main Script ---
 
 if ! command -v bw &> /dev/null; then
   echo "Error: Bitwarden CLI (bw) is not installed."
