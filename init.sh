@@ -91,10 +91,11 @@ if [[ $choice -eq 0 ]]; then
     exit 1
   elif [[ -z "$SCRIPT_DIR" || "$SCRIPT_DIR" == "." ]]; then
     git clone https://github.com/$gitusername/${MYINIT}
-
   else
     # Script is being run from the filesystem, but not within a git repo
-    git clone https://github.com/$gitusername/${MYINIT} "$MYINIT"
+    if [[ ! -d "$MYINIT" ]]; then
+      git clone https://github.com/$gitusername/${MYINIT} "$MYINIT"
+    fi
   fi
 
   if [[ -f "${MYINIT}/config.env" ]]; then
