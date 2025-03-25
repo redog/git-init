@@ -29,7 +29,7 @@ get_key() {
 
     local item_id=$(bw list items | jq -r --arg key_name "$key_name" '.[] | select(.type == 5 and .name == $key_name) | .id')
     if [ -z "$item_id" ]; then
-        echo "Error: Could not find a key named '$key_name' in the AWKeys folder."
+        echo "Error: Could not find a key named '$key_name'."
         exit 1
     fi
 
