@@ -77,23 +77,24 @@ create_key() {
   ssh-keygen -t ed25519 -f "$key_path" -N ""
 
   if [ $? -ne 0 ]; then
-      echo "Error: SSH key generation failed."
-      exit 1
+    echo "Error: SSH key generation failed."
+    exit 1
   fi
 
   local private_key=$(cat "$key_path")
   local public_key=$(cat "$key_path.pub")
   local key_fingerprint=$(ssh-keygen -lf "$key_path" | awk '{print $2}')
 
-# Create the Bitwarden item JSON (Identity type = 5)
-  local bw_item=$(jq -n \
-    --arg name "$key_name" \
-    --arg privateKey "$private_key" \
-    --arg publicKey "$public_key" \
-    --arg keyFingerprint "$key_fingerprint" \
-    '{type: 5, name: $name, sshKey: { privateKey: $privateKey, publicKey: $publicKey, keyFingerprint: $keyFingerprint }}')
+  # Corrected command using bw encode and a series of jq transformations
+  bw get template item | \
+    jq '.type=5' | \
+    jq --arg name "$key_name" '.name=$name' | \
+    jq --arg privateKey "$private_key" '.sshKey.privateKey=$privateKey' | \
+    jq --arg publicKey "$public_key" '.sshKey.publicKey=$publicKey' | \
+    jq --arg keyFingerprint "$key_fingerprint" '.sshKey.fingerprint=$keyFingerprint' | \
+    bw encode | \
+    bw create item
 
-  bw create item "$bw_item"
   if [ $? -ne 0 ]; then
     echo "Error: Failed to save the key to Bitwarden. The local key has been created."
     exit 1
