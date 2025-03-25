@@ -97,8 +97,8 @@ if [[ $choice -eq 0 ]]; then
     git clone https://github.com/$gitusername/${MYINIT} "$MYINIT"
   fi
 
-  if [[ -f "config.env" ]]; then
-    source "config.env"
+  if [[ -f "${MYINIT}/config.env" ]]; then
+    source "${MYINIT}/config.env"
   else
     echo "Warning: config.env file not found." >&2
   fi
