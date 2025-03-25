@@ -4,10 +4,6 @@ bw_is_logged_in() {
   bw status | grep -q '"status":"unlocked"'
 }
 
-log() {
-  echo "[DEBUG] $1"
-}
-
 list_keys() {
   if ! bw_is_logged_in; then
     echo "Error: Bitwarden is not logged in."
@@ -29,7 +25,6 @@ get_key() {
         exit 1
     fi
     local item_id=$(bw list items | jq -r --arg key_name "$key_name" '.[] | select(.type == 5 and .name == $key_name) | .id')
-    log "Item ID: $item_id"
 
     if [ -z "$item_id" ]; then
         echo "Error: Could not find a key named '$key_name'."
@@ -37,13 +32,9 @@ get_key() {
     fi
 
     local item_json=$(bw get item "$item_id")
-    log "Item JSON: $item_json"
 
     local private_key=$(echo "$item_json" | jq -r '.sshKey.privateKey')
     local public_key=$(echo "$item_json" | jq -r '.sshKey.publicKey')
-
-    log "Retrieved Private Key: $private_key"
-    log "Retrieved Public Key: $public_key"
 
     if [ -z "$private_key" ] || [ -z "$public_key" ]; then
         echo "Error: Could not retrieve the private or public key from Bitwarden."
@@ -54,11 +45,10 @@ get_key() {
     echo "$private_key" > "$key_path"
     chmod 600 "$key_path"
     echo "Private key '$key_name' saved to '$key_path'"
-
     read -r -p "Add public key to ~/.ssh/authorized_keys? (y/n): " confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         echo "$public_key" >> "$HOME/.ssh/authorized_keys"
-        chmod 600 "$HOME/.ssh/authorized_keys"  # Ensure authorized_keys has correct permissions
+        chmod 600 "$HOME/.ssh/authorized_keys"
         echo "Public key added to ~/.ssh/authorized_keys"
     else
         echo "Public key not added to ~/.ssh/authorized_keys"
@@ -92,19 +82,15 @@ create_key() {
     exit 1
   fi
 
-  local private_key=$(cat "$key_path") # Use cat, not command substitution
-  local public_key=$(cat "$key_path.pub") # Use cat, not command substitution
+  local private_key=$(cat "$key_path") 
+  local public_key=$(cat "$key_path.pub")
+
   local key_fingerprint=$(ssh-keygen -lf "$key_path" | awk '{print $2}')
 
-  log "Generated Private Key: $private_key"
-  log "Generated Public Key: $public_key"
-  log "Generated Fingerprint: $key_fingerprint"
-  
-  # Correctly populate the .sshKey object
   bw get template item | \
     jq --arg name "$key_name" --arg privateKey "$private_key" --arg publicKey "$public_key" --arg keyFingerprint "$key_fingerprint" '. + {type: 5, name: $name, sshKey: {privateKey: $privateKey, publicKey: $publicKey, keyFingerprint: $keyFingerprint}}' | \
     bw encode | \
-    bw create item
+    bw create item > /dev/null 2>&1
 
   if [ $? -ne 0 ]; then
     echo "Error: Failed to save the key to Bitwarden. The local key has been created."
@@ -117,7 +103,7 @@ create_key() {
   read -r -p "Add public key to ~/.ssh/authorized_keys? (y/n): " confirm
   if [[ "$confirm" =~ ^[Yy]$ ]]; then
       echo "$public_key" >> "$HOME/.ssh/authorized_keys"
-      chmod 600 "$HOME/.ssh/authorized_keys" # Ensure authorized_keys has correct permissions.
+      chmod 600 "$HOME/.ssh/authorized_keys"
       echo "Public key added to ~/.ssh/authorized_keys"
   else
       echo "Public key not added to ~/.ssh/authorized_keys"
