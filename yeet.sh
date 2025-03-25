@@ -12,19 +12,8 @@ list_keys() {
     exit 1
   fi
 
-  local folder_ids=$(bw list folders --search AWKeys | jq -r '.[] | select(.name == "AWKeys") | .id')
-  if [ -z "$folder_ids" ]; then
-    echo "Error: Could not find the AWKeys folder ID."
-    exit 1
-  fi
-  if [ $(echo "$folder_ids" | wc -l) -gt 1 ]; then
-      echo "Error: Multiple folders found matching 'AWKeys'."
-      exit 1
-  fi
-  local folder_id=$folder_ids
-
-  echo "Available SSH Keys in Bitwarden (AWKeys folder):"
-  bw list items --folderid "$folder_id" | jq -r '.[] | select(.type == 5) | .name'
+  echo "Available SSH Keys in Bitwarden:"
+  bw list items | jq -r '.[] | select(.type == 5) | .name'
 }
 
 get_key() {
@@ -38,18 +27,7 @@ get_key() {
         exit 1
     fi
 
-  local folder_ids=$(bw list folders --search AWKeys | jq -r '.[] | select(.name == "AWKeys") | .id')
-  if [ -z "$folder_ids" ]; then
-    echo "Error: Could not find the AWKeys folder ID."
-    exit 1
-  fi
-  if [ $(echo "$folder_ids" | wc -l) -gt 1 ]; then
-      echo "Error: Multiple folders found matching 'AWKeys'."
-      exit 1
-  fi
-  local folder_id=$folder_ids
-
-    local item_id=$(bw list items --folderid "$folder_id" | jq -r --arg key_name "$key_name" '.[] | select(.type == 5 and .name == $key_name) | .id')
+    local item_id=$(bw list items | jq -r --arg key_name "$key_name" '.[] | select(.type == 5 and .name == $key_name) | .id')
     if [ -z "$item_id" ]; then
         echo "Error: Could not find a key named '$key_name' in the AWKeys folder."
         exit 1
@@ -90,17 +68,6 @@ create_key() {
     echo "Error: Key name cannot be empty."
     exit 1
   fi
-
-  local folder_ids=$(bw list folders --search AWKeys | jq -r '.[] | select(.name == "AWKeys") | .id')
-  if [ -z "$folder_ids" ]; then
-    echo "Error: Could not find the AWKeys folder ID."
-    exit 1
-  fi
-  if [ $(echo "$folder_ids" | wc -l) -gt 1 ]; then
-      echo "Error: Multiple folders found matching 'AWKeys'."
-      exit 1
-  fi
-  local folder_id=$folder_ids
 
   local key_path="$HOME/.ssh/$key_name"
   if [ -f "$key_path" ]; then
