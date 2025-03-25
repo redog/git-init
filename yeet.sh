@@ -26,8 +26,7 @@ get_key() {
         echo "Usage: $0 get <key_name>"
         exit 1
     fi
-
-    local item_id=$(bw list items | jq -r --arg key_name "$key_name" '.| select(.type == 5 and .name == $key_name) | .id')
+    local item_id=$(bw list items | jq -r --arg key_name "$key_name" '.[] | select(.type == 5 and .name == $key_name) | .id')
     if [ -z "$item_id" ]; then
         echo "Error: Could not find a key named '$key_name'."
         exit 1
