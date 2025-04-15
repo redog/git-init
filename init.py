@@ -160,10 +160,10 @@ def choose_option(prompt: str, options: List[str]) -> Tuple[int, str]:
         except EOFError:
             print("\nOperation cancelled by user.", file=sys.stderr)
             sys.exit(1)
-
+          
 def get_github_token_from_bws() -> Optional[str]:
     """
-    Retrieves the GitHub PAT from Bitwarden using bws CLI.
+    Retrieves the GitHub PAT from Bitwarden using bws CLI (TSV output).
     """
     print("Attempting to retrieve GitHub token from Bitwarden...")
     if "BWS_ACCESS_TOKEN" not in os.environ:
@@ -175,39 +175,51 @@ def get_github_token_from_bws() -> Optional[str]:
     print(f"Using Bitwarden secret ID: {gh_token_id}")
 
     try:
-        # Command to get the secret, output as TSV, take last line (in case of warnings), print 3rd field (password)
-        # Using shell=True here because the pipe/awk logic is hard to replicate reliably with subprocess args list across platforms
-        # Ensure GH_TOKEN_ID is validated or controlled if possible.
-        # Alternative without shell=True requires more parsing in Python.
-        command = f"bws secret get {shlex.quote(gh_token_id)} -o tsv" # Get TSV output
-        result = run_command(command, check=True, capture_output=True) # Run and check
+        # Command to get the secret, output as TSV
+        # Using shlex.quote just in case the ID ever contains special chars
+        command = ['bws', 'secret', 'get', gh_token_id, '-o', 'tsv']
+        result = run_command(command, check=True, capture_output=True)
 
         # Parse the TSV output
         lines = result.stdout.strip().splitlines()
-        if not lines:
-             print("Error: No output received from 'bws secret get'.", file=sys.stderr)
-             return None
-
-        # Find the line starting with 'password:' - bws tsv format might vary
-        # A more robust approach might be to parse the JSON output if TSV proves unstable
-        password_line = None
-        for line in reversed(lines): # Check from the end
-            if line.startswith("password\t"):
-                password_line = line
-                break
-
-        if not password_line:
-             print("Error: Could not find 'password' field in 'bws secret get' TSV output.", file=sys.stderr)
+        if len(lines) < 2: # Need at least header and one data line
+             print("Error: Unexpected output format from 'bws secret get -o tsv' (expected header and data line).", file=sys.stderr)
              print("Full output:\n" + result.stdout, file=sys.stderr)
              return None
 
-        parts = password_line.strip().split('\t')
-        if len(parts) >= 2:
-            token = parts[1]
+        header_line = lines[0]
+        data_line = lines[1] # Assume the first line after header is the relevant secret
+
+        # Find the index of the 'Value' column (case-insensitive check)
+        headers = [h.strip().lower() for h in header_line.split('\t')]
+        try:
+            # Find the index matching 'value'
+            value_index = -1
+            for i, h in enumerate(headers):
+                if h == 'value':
+                    value_index = i
+                    break
+            if value_index == -1:
+                 raise ValueError("'value' column not found") # Consistent error type
+        except ValueError:
+            print("Error: Could not find 'Value' column in 'bws secret get' TSV header.", file=sys.stderr)
+            print("Header received: " + header_line, file=sys.stderr)
+            print("Parsed headers:", headers, file=sys.stderr)
+            return None
+
+        # Split the data line and extract the value
+        parts = data_line.split('\t')
+        if len(parts) > value_index:
+            token = parts[value_index].strip() # Get the value from the correct column
+            if not token:
+                print("Error: The 'Value' field in the secret appears to be empty.", file=sys.stderr)
+                return None
             print("Successfully retrieved GitHub token from Bitwarden.")
             return token
         else:
-            print(f"Error: Unexpected format in 'bws secret get' output line: {password_line}", file=sys.stderr)
+            print(f"Error: Data line format mismatch. Expected at least {value_index + 1} columns based on header.", file=sys.stderr)
+            print("Data line received: " + data_line, file=sys.stderr)
+            print("Parsed parts:", parts, file=sys.stderr)
             return None
 
     except FileNotFoundError:
