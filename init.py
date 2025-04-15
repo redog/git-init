@@ -22,6 +22,7 @@ import platform
 import re
 import shlex
 import subprocess
+import requests
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
