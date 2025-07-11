@@ -15,6 +15,22 @@ if ! command -v bws &> /dev/null; then
   exit 1
 fi
 
+# Function to ensure BW_SESSION is set and unlocked
+ensure_session() {
+  # If BW_SESSION is unset or expired, login/unlock
+  if [[ -z "$BW_SESSION" ]] || ! bw status --session "$BW_SESSION" | grep -q "Unlocked"; then
+    echo "=> Logging into Bitwarden using API key..."
+    # Login with API key, output raw session
+    export BW_SESSION=$(bw login --apikey --raw)
+    if [[ -z "$BW_SESSION" ]]; then
+      echo "Error: Failed to login to Bitwarden." >&2
+      exit 1
+    fi
+  fi
+}
+
+ensure_session
+
 # Retrieve the secret data.
 secret_data=$(bws secret get "$SECRET_ID" 2> /dev/null)
 
