@@ -63,9 +63,25 @@ else
 fi
 
 gitusername=$(git config --global user.github.login.name)
+
 if [[ -z "$gitusername" ]]; then
   read -p "Enter your Github username: " gitusername
   git config --global user.github.login.name "$gitusername"
+fi
+
+email=$(git config --global user.email "$gitusername"@users.noreply.github.com)
+
+if [[ -z "$email" ]]; then
+  read -p "Enter your email address: " email
+  git config --global user.email "$email"
+fi
+
+
+name=$(git config --global user.name )
+
+if [[ -z "$name" ]]; then
+  read -p "Enter your Full Name: " name
+  git config --global user.name "$name"
 fi
 
 export GITHUB_ACCESS_TOKEN="$pass"
