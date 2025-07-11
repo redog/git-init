@@ -109,7 +109,8 @@ else
   repos=$(get_repositories "${GITHUB_ACCESS_TOKEN}")
   IFS=$'\n' read -rd '' -a repo_array <<<"$repos"
   chosen_repo=$(choose ${repo_array[@]})
-  git clone https://github.com/${chosen_repo}
+  # FIX: Use the access token in the clone URL to prevent password prompts for private repos.
+  git clone "https://x-access-token:${GITHUB_ACCESS_TOKEN}@github.com/${chosen_repo}.git" "$repo_dir"
   cd "${chosen_repo#*/}" || exit 1
   # Configure git to use the credential manager.
   git config credential.helper 'manager'
