@@ -62,9 +62,10 @@ else
   exit 5
 fi
 
-gitusername=$(git config user.github.login.name)
+gitusername=$(git config --global user.github.login.name)
 if [[ -z "$gitusername" ]]; then
   read -p "Enter your Github username: " gitusername
+  git config --global user.github.login.name "$gitusername"
 fi
 
 export GITHUB_ACCESS_TOKEN="$pass"
