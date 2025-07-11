@@ -109,7 +109,7 @@ else
   IFS=$'\n' read -rd '' -a repo_array <<<"$repos"
   chosen_repo=$(choose "${repo_array[@]}")
   # FIX: Use the access token in the clone URL to prevent password prompts for private repos.
-  git clone "https://x-access-token:${GITHUB_ACCESS_TOKEN}@github.com/${chosen_repo}.git" "$repo_dir"
+  git clone "https://x-access-token:${GITHUB_ACCESS_TOKEN}@github.com/${chosen_repo}.git"
   cd "${chosen_repo#*/}" || exit 1
   # Configure git to use the credential manager.
   case "$OSTYPE" in
