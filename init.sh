@@ -63,8 +63,7 @@ else
 fi
 
 gitusername=$(git config user.github.login.name)
-
-if [[ $? -ne 0 ]]; then
+if [[ -z "$gitusername" ]]; then
   read -p "Enter your Github username: " gitusername
 fi
 
@@ -108,12 +107,18 @@ if [[ $choice -eq 0 ]]; then
 else
   repos=$(get_repositories "${GITHUB_ACCESS_TOKEN}")
   IFS=$'\n' read -rd '' -a repo_array <<<"$repos"
-  chosen_repo=$(choose ${repo_array[@]})
+  chosen_repo=$(choose "${repo_array[@]}")
   # FIX: Use the access token in the clone URL to prevent password prompts for private repos.
   git clone "https://x-access-token:${GITHUB_ACCESS_TOKEN}@github.com/${chosen_repo}.git" "$repo_dir"
   cd "${chosen_repo#*/}" || exit 1
   # Configure git to use the credential manager.
-  git config credential.helper 'manager'
+  case "$OSTYPE" in
+    darwin*) git config credential.helper osxkeychain ;;
+    linux*)  git config credential.helper cache ;;
+    msys*|cygwin*) git config credential.helper manager ;;
+    *) echo "Unsupported OS for credential helper config." ;;
+  esac
+  
   git config "remote.origin.url" "https://github.com/${chosen_repo}.git"
 fi
 
