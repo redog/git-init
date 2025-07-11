@@ -71,12 +71,6 @@ fi
 
 email=$(git config --global user.email "$gitusername"@users.noreply.github.com)
 
-if [[ -z "$email" ]]; then
-  read -p "Enter your email address: " email
-  git config --global user.email "$email"
-fi
-
-
 name=$(git config --global user.name )
 
 if [[ -z "$name" ]]; then
