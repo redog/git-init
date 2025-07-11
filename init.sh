@@ -82,7 +82,7 @@ choose "Create a new repository" "Clone an existing repository"
 
 if [[ $choice -eq 0 ]]; then
   # Determine the script's directory
-  SCRIPT_DIR=$(dirname "$0")
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   # Check if we're inside a git repository
   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     # Script is being run from within a git repo
