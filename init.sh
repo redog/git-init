@@ -23,7 +23,7 @@ choose() {
 
 get_repositories() {
   token="$1"
-  username="$2"
+#  username="$2"
   if ! response=$(curl -H "Authorization: token ${token}" "https://api.github.com/user/repos" 2>&1); then
     echo "Failed to fetch repositories." >&2
     exit 3
@@ -115,11 +115,15 @@ if [[ $choice -eq 0 ]]; then
   python3 ${MYINIT}/mkrepo.py
 else
   repos=$(get_repositories "${GITHUB_ACCESS_TOKEN}")
-  if [[ -z "$repos" ]]; then
+    if [[ -z "$repos" ]]; then
     echo "No repositories found." >&2
     exit 0
   fi
-  IFS=$'\n' read -rd '' -a repo_array <<<"$repos"
+  repo_array=()
+  while IFS= read -r line; do
+    repo_array+=("$line")
+  done <<< "$repos"
+
   chosen_repo=$(choose "${repo_array[@]}")
   # FIX: Use the access token in the clone URL to prevent password prompts for private repos.
   git clone "https://x-access-token:${GITHUB_ACCESS_TOKEN}@github.com/${chosen_repo}.git"
