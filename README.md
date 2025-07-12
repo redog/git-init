@@ -10,11 +10,9 @@ git-init
      bash <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/bws-install.sh)
      bash <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/bw-install.sh)
   1. requests python module
-
     
      ```
      python -m venv venv
-     ./venv/bin/activate
      source venv/bin/activate
      pip install requests
   1. git credential manager
