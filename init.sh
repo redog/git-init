@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 MYINIT="git-init"
 choice=-1
@@ -23,9 +24,8 @@ choose() {
 get_repositories() {
   token="$1"
   username="$2"
-  response=$(curl -H "Authorization: token ${token}" "https://api.github.com/user/repos" 2>&1)
-  if [[ $? -ne 0 ]]; then
-    echo "Failed to fetch repositories."
+  if ! response=$(curl -H "Authorization: token ${token}" "https://api.github.com/user/repos" 2>&1); then
+    echo "Failed to fetch repositories." >&2
     exit 3
   fi
   echo "$response" | grep -o '"full_name":\s*"[^"]*"' | sed -E 's/"full_name":[[:space:]]*"([^"]*)"/\1/'
@@ -39,16 +39,14 @@ fi
 # Attempt to retrieve the password
 if [[ "$OSTYPE" == "darwin"* ]]; then
   # macOS
-  pass=$(bws secret get ${GH_TOKEN_ID:-"857d0c2c-cfe0-4e6d-995c-b1690020f8fb"} -o tsv | tail -n 1 | awk '{print $3}' 2>/dev/null)
-  if [[ $? -ne 0 ]]; then
-    echo "Failed to retrieve GitHub access token"
+  if ! pass=$(bws secret get ${GH_TOKEN_ID:-"857d0c2c-cfe0-4e6d-995c-b1690020f8fb"} -o tsv | tail -n 1 | awk '{print $3}' 2>/dev/null); then
+    echo "Failed to retrieve GitHub access token" >&2
     exit 1
   fi
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
   # Linux
-  pass=$(bws secret get ${GH_TOKEN_ID:-"857d0c2c-cfe0-4e6d-995c-b1690020f8fb"} -o tsv | tail -n 1 | awk '{print $3}' 2>/dev/null)
-  if [[ $? -ne 0  ]]; then
-    echo "Problem retrieving GitHub access token"
+  if ! pass=$(bws secret get ${GH_TOKEN_ID:-"857d0c2c-cfe0-4e6d-995c-b1690020f8fb"} -o tsv | tail -n 1 | awk '{print $3}' 2>/dev/null); then
+    echo "Problem retrieving GitHub access token" >&2
     exit 2
   fi
 
