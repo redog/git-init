@@ -19,8 +19,6 @@ git-init
 
     
      ```  
-     read BITWARDEN_ACCESS_TOKEN
-     export BITWARDEN_ACCESS_TOKEN
      read BWS_ACCESS_TOKEN
      export BWS_ACCESS_TOKEN
 
