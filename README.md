@@ -30,4 +30,4 @@ bash <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/init.sh)
 
 or
 
-./src/git-init/init.sh
+./init.sh
