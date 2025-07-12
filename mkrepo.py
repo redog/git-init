@@ -48,15 +48,15 @@ if not email:
         if validate_email(email):
             break
 
-# Prompt for Github username
+# Prompt for GitHub username
 username = git_config.get('user.github.login.name')
 if not username:
     while True:
-        username = input('Github username: ')
+        username = input('GitHub username: ')
         if username:
             break
         else:
-            print("Github username cannot be empty. Please try again.")
+            print("GitHub username cannot be empty. Please try again.")
 
 # Input and validation loop for repo name
 while True:

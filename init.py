@@ -330,7 +330,7 @@ def action_create_repository(token: str, username_from_config: Optional[str]):
     name = global_config.get('user.name') or get_user_input("Enter your Full Name")
     email = global_config.get('user.email') or get_user_input("Enter your Email Address", validate_email)
     # Prefer username from initial config/prompt, fallback to global git config
-    username = username_from_config or global_config.get('user.github.login.name') or get_user_input("Enter your Github Username")
+    username = username_from_config or global_config.get('user.github.login.name') or get_user_input("Enter your GitHub Username")
     repo_name = get_user_input("Enter a unique name for the new repository")
 
     repo_path = Path(repo_name)
@@ -480,7 +480,7 @@ def main():
     github_username = git_config.get('user.github.login.name')
     if not github_username:
         print("\nGitHub username not found in global git config (user.github.login.name).")
-        github_username = get_user_input("Please enter your Github Username")
+        github_username = get_user_input("Please enter your GitHub Username")
 
 
     # 4. Choose Action

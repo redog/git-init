@@ -65,7 +65,7 @@ fi
 gitusername=$(git config --global user.github.login.name)
 
 if [[ -z "$gitusername" ]]; then
-  read -p "Enter your Github username: " gitusername
+  read -p "Enter your GitHub username: " gitusername
   git config --global user.github.login.name "$gitusername"
 fi
 
@@ -81,7 +81,7 @@ fi
 export GITHUB_ACCESS_TOKEN="$pass"
 
 if [[ -z $GITHUB_ACCESS_TOKEN ]]; then
-  echo "Github Access Token not set check environment."
+  echo "GitHub Access Token not set check environment."
   exit 6
 fi
 
