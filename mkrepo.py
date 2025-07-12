@@ -94,6 +94,7 @@ else:
     print('Failed to create repository')
 
 cmd = ['/bin/bash', config_script, name, email, username, token, repo]
+
 try:
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=script_dir)
     stdout, stderr = p.communicate()

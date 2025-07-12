@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Short and simple jq installer for apt-based systems (Debian/Ubuntu).
+# Short and simple git installer for apt-based systems (Debian/Ubuntu).
 
 if command -v git &> /dev/null; then
   echo "git is already installed."
