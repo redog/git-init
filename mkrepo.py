@@ -4,6 +4,9 @@ import os
 import subprocess
 import re
 
+script_dir = os.path.dirname(os.path.abspath(__file__))
+config_script = os.path.join(script_dir, 'configure.sh')
+
 # Define a simple email validation function
 def validate_email(email):
     if re.match(r"[^@]+@[^@]+\.[^@]+", email):
@@ -90,9 +93,10 @@ if response.status_code == 201:
 else:
     print('Failed to create repository')
 
-cmd = ['/bin/bash', './configure.sh', name, email, username, token, repo]
+cmd = ['/bin/bash', config_script, name, email, username, token, repo]
+
 try:
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=script_dir)
     stdout, stderr = p.communicate()
     if p.returncode != 0:
         print(f"Failed to execute command: {cmd}")
