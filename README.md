@@ -23,6 +23,7 @@ git-init
      export BITWARDEN_ACCESS_TOKEN
      read BWS_ACCESS_TOKEN
      export BWS_ACCESS_TOKEN
+    ```
 
 # Get it and init it
 
