@@ -115,6 +115,10 @@ if [[ $choice -eq 0 ]]; then
   python3 ${MYINIT}/mkrepo.py
 else
   repos=$(get_repositories "${GITHUB_ACCESS_TOKEN}")
+  if [[ -z "$repos" ]]; then
+    echo "No repositories found." >&2
+    exit 0
+  fi
   IFS=$'\n' read -rd '' -a repo_array <<<"$repos"
   chosen_repo=$(choose "${repo_array[@]}")
   # FIX: Use the access token in the clone URL to prevent password prompts for private repos.
