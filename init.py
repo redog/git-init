@@ -306,7 +306,7 @@ def action_clone_repository(token: str):
 
         # Configure credential helper locally for this repo (optional, but matches original)
         # Git Credential Manager (recommended) or cache
-        helper_to_set = 'manager' if platform.system() == 'Windows' else 'cache --timeout=3600'
+        helper_to_set = 'manager' if platform.system() == 'Windows' else "cache --timeout=3600"
         print(f"Configuring local credential.helper to '{helper_to_set}'...")
         run_command(['git', 'config', '--local', 'credential.helper', helper_to_set], cwd=repo_path)
 
