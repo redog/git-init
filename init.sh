@@ -131,7 +131,7 @@ else
   # Configure git to use the credential manager.
   case "$OSTYPE" in
     darwin*) git config credential.helper osxkeychain ;;
-    linux*)  git config credential.helper cache ;;
+    linux*)  git config credential.helper ${HOME}/.config/git-credential-env ;;
     msys*|cygwin*) git config credential.helper manager ;;
     *) echo "Unsupported OS for credential helper config." ;;
   esac
