@@ -4,35 +4,37 @@ bw_is_logged_in() {
   bw status | grep -q '"status":"unlocked"'
 }
 
-
 list_keys() {
     if ! bw_is_logged_in; then
         echo "Error: Bitwarden is not logged in."
-        exit 1
+        return 1
     fi
 
     echo "Available SSH Keys in Bitwarden:"
     echo "--------------------------------"
-    bw list items | jq -r '. |
-        select(.type == 5) |
-        . as $item |
-        if (.sshKey.metadata.expires != null and .sshKey.metadata.expires != "") then
-            $item.sshKey.metadata.expires as $exp_date |
-            if ($exp_date | length > 0) then
-                (($exp_date | fromdate) - (now | floor)) / 86400 | floor as $days_left |
-                if $days_left < 0 then
-                    "\(.name) (EXPIRED \(-$days_left) days ago)"
-                elif $days_left == 0 then
-                    "\(.name) (Expires TODAY)"
-                else
-                    "\(.name) (Expires in \($days_left) days)"
-                end
+    bw list items | jq -r '
+        .[] | # Iterate over each item in the array
+        select(.type == 5) | . as $item | # Filter for SSH keys and save the item
+
+        # First, check if the .expires field is a string, THEN check if it is non-empty.
+        # This prevents passing `null` to the `test` function.
+        if ($item.sshKey.metadata.expires | type == "string" and test(".+")) then
+            # Calculate days remaining and store in a variable
+            ((($item.sshKey.metadata.expires | fromdate) - now) / 86400 | floor) as $days_left |
+            
+            # Now, use the variable in a new set of conditions
+            if $days_left < 0 then
+                "\($item.name) (EXPIRED \(-$days_left) days ago)"
+            elif $days_left == 0 then
+                "\($item.name) (Expires TODAY)"
             else
-                "\(.name) (No expiration)"
+                "\($item.name) (Expires in \($days_left) days)"
             end
         else
-            "\(.name) (No expiration)"
-        end'
+            # If no expiration date is set (field is null, not a string, or an empty string)
+            "\($item.name) (No expiration)"
+        end
+    '
 }
 
 check_key_expiration() {
