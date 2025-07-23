@@ -26,13 +26,19 @@ fi
 # Function to ensure BW_SESSION is set and unlocked
 ensure_session() {
   if [[ -z "$BW_SESSION" ]] || ! bw status --session "$BW_SESSION" | grep -iq "unlocked"; then
-    echo "=> Logging into Bitwarden..."
-    bw login
-    export BW_SESSION=$(bw unlock --raw)
-    if [[ -z "$BW_SESSION" ]]; then
+    echo "=> Unlocking Bitwarden..."
+    local session_output
+    session_output=$(bw unlock --raw 2>&1)
+    if echo "$session_output" | grep -q "You are not logged in"; then
+      echo "=> Logging into Bitwarden..."
+      bw login
+      session_output=$(bw unlock --raw 2>&1)
+    fi
+    if [[ -z "$session_output" ]] || ! bw status --session "$session_output" | grep -iq "unlocked"; then
       echo "Error: Failed to unlock Bitwarden." >&2
       return 1
     fi
+    export BW_SESSION="$session_output"
   fi
 }
 
@@ -77,4 +83,3 @@ if [ -z "$BW_CLIENTID" ] || [ -z "$BW_CLIENTSECRET" ]; then
   return 1
 fi
 export BW_CLIENTID BW_CLIENTSECRET
-export BW_SESSION=$(bw unlock --raw)
