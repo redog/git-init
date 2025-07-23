@@ -21,6 +21,8 @@ git-init
      ```  
      read BWS_ACCESS_TOKEN
      export BWS_ACCESS_TOKEN
+     echo -n "$BWS_ACCESS_TOKEN" | secret-tool store --label="Bitwarden Access Token" bitwarden accesstoken
+
 
 # Get it and init it
 
@@ -28,4 +30,6 @@ bash <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/init.sh)
 
 or
 
+./bw-key-init.sh 
+./bws-key-init.sh
 ./init.sh
