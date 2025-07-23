@@ -207,24 +207,31 @@ copy_key() {
     echo "Error: Source key '$src_path' not found."
     exit 1
   fi
-  if [ ! -f "${src_path}.pub" ]; then
-    echo "Error: Source public key '${src_path}.pub' not found."
-    exit 1
+
+  local key_file="$src_path"
+  local private_key=""
+  local public_key=""
+
+  if [[ "$src_path" == *.pub ]]; then
+    public_key=$(cat "$src_path")
+    key_file="${src_path%.pub}"
   fi
 
-  local dst_path="$HOME/.ssh/$new_name"
-  if [ -f "$dst_path" ]; then
-    echo "Error: Destination key '$dst_path' already exists."
-    exit 1
+  if [ -f "$key_file" ]; then
+    private_key=$(cat "$key_file")
   fi
 
-  cp "$src_path" "$dst_path"
-  cp "${src_path}.pub" "$dst_path.pub"
-  chmod 600 "$dst_path"
+  if [ -z "$public_key" ] && [ -f "${key_file}.pub" ]; then
+    public_key=$(cat "${key_file}.pub")
+  fi
 
-  local private_key=$(cat "$dst_path")
-  local public_key=$(cat "$dst_path.pub")
-  local key_fingerprint=$(ssh-keygen -lf "$dst_path" | awk '{print $2}')
+  if [ -z "$public_key" ] && [ -n "$private_key" ]; then
+    public_key=$(ssh-keygen -y -f "$key_file")
+  fi
+
+  local fingerprint_source="$src_path"
+  [ -f "$key_file" ] && fingerprint_source="$key_file"
+  local key_fingerprint=$(ssh-keygen -lf "$fingerprint_source" | awk '{print $2}')
 
   local existing=$(bw list items | jq -r --arg n "$new_name" '.[] | select(.type == 5 and .name == $n) | .id')
   if [ -n "$existing" ]; then
@@ -240,8 +247,7 @@ copy_key() {
     echo "Error: Failed to save the key to Bitwarden."
     exit 1
   fi
-
-  echo "SSH key copied to '$dst_path' and uploaded to Bitwarden as '$new_name'."
+  echo "SSH key '$src_path' uploaded to Bitwarden as '$new_name'."
 }
 
 if ! command -v bw &> /dev/null; then
