@@ -189,6 +189,61 @@ create_key() {
   fi
 }
 
+copy_key() {
+  if ! bw_is_logged_in; then
+    echo "Error: Bitwarden is not logged in."
+    exit 1
+  fi
+
+  local src_path="$1"
+  local new_name="$2"
+
+  if [ -z "$src_path" ] || [ -z "$new_name" ]; then
+    echo "Usage: $0 copy <source_key_path> <new_key_name>"
+    exit 1
+  fi
+
+  if [ ! -f "$src_path" ]; then
+    echo "Error: Source key '$src_path' not found."
+    exit 1
+  fi
+  if [ ! -f "${src_path}.pub" ]; then
+    echo "Error: Source public key '${src_path}.pub' not found."
+    exit 1
+  fi
+
+  local dst_path="$HOME/.ssh/$new_name"
+  if [ -f "$dst_path" ]; then
+    echo "Error: Destination key '$dst_path' already exists."
+    exit 1
+  fi
+
+  cp "$src_path" "$dst_path"
+  cp "${src_path}.pub" "$dst_path.pub"
+  chmod 600 "$dst_path"
+
+  local private_key=$(cat "$dst_path")
+  local public_key=$(cat "$dst_path.pub")
+  local key_fingerprint=$(ssh-keygen -lf "$dst_path" | awk '{print $2}')
+
+  local existing=$(bw list items | jq -r --arg n "$new_name" '.[] | select(.type == 5 and .name == $n) | .id')
+  if [ -n "$existing" ]; then
+    echo "Error: A key named '$new_name' already exists in Bitwarden."
+    exit 1
+  fi
+
+  bw get template item | \
+    jq --arg name "$new_name" --arg privateKey "$private_key" --arg publicKey "$public_key" --arg keyFingerprint "$key_fingerprint" '. + {type: 5, name: $name, sshKey: {privateKey: $privateKey, publicKey: $publicKey, keyFingerprint: $keyFingerprint}}' | \
+    bw encode | bw create item > /dev/null 2>&1
+
+  if [ $? -ne 0 ]; then
+    echo "Error: Failed to save the key to Bitwarden."
+    exit 1
+  fi
+
+  echo "SSH key copied to '$dst_path' and uploaded to Bitwarden as '$new_name'."
+}
+
 if ! command -v bw &> /dev/null; then
   echo "Error: Bitwarden CLI (bw) is not installed."
   exit 1
@@ -199,6 +254,7 @@ if [ -z "$1" ]; then
     echo "  $0 list      - List available SSH keys"
     echo "  $0 get <keyname> - Get a key and add pub key to authorized_keys"
     echo "  $0 create    - Creates and upload a key"
+    echo "  $0 copy <source> <new> - Copy a local key to a new name and upload"
     exit 0
 fi
 
@@ -211,6 +267,9 @@ case "$1" in
     ;;
   create)
     create_key
+    ;;
+  copy)
+    copy_key "$2" "$3"
     ;;
   *)
     echo "Invalid command: $1"
