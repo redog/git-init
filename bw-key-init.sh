@@ -23,6 +23,12 @@ if ! command -v bw &> /dev/null; then
   return 1
 fi
 
+# Check if jq is installed.
+if ! command -v jq &> /dev/null; then
+  echo "Error: jq command not found.  Please install jq." >&2
+  exit 1
+fi
+
 # Function to ensure BW_SESSION is set and unlocked
 ensure_session() {
   if [[ -z "$BW_SESSION" ]] || ! bw status --session "$BW_SESSION" | grep -iq "unlocked"; then
@@ -59,8 +65,8 @@ if [[ -z "$BWS_ACCESS_TOKEN" ]]; then
   export BWS_ACCESS_TOKEN
 fi
 
-# Retrieve the secret data.
-secret_data=$(bws secret get "$SECRET_ID" 2> /dev/null)
+# Retrieve the secret data as JSON.
+secret_data=$(bws secret get "$SECRET_ID" -o json 2> /dev/null)
 
 # Check if the secret retrieval was successful
 if [ $? -ne 0 ]; then
@@ -74,8 +80,8 @@ if [ -z "$secret_data" ]; then
 fi
 
 
-BW_CLIENTID=$(echo "$secret_data" | awk -F'"' '{for(i=1;i<=NF;i++){if($i=="key"){print $(i+2)}}}')
-BW_CLIENTSECRET=$(echo "$secret_data" | awk -F'"' '{for(i=1;i<=NF;i++){if($i=="value"){print $(i+2)}}}')
+BW_CLIENTID=$(echo "$secret_data" | jq -r '.client_id')
+BW_CLIENTSECRET=$(echo "$secret_data" | jq -r '.client_secret')
 
 # Check if the variables were populated.
 if [ -z "$BW_CLIENTID" ] || [ -z "$BW_CLIENTSECRET" ]; then
