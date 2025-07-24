@@ -35,3 +35,7 @@ bash <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/init.sh)
 ```
 ./init.sh && source ./bw-key-init.sh
 ```
+
+The `bw-key-init.sh` script will automatically log in to Bitwarden using your API
+key (if available) before unlocking the vault, so no manual `bw login` step is
+required.
