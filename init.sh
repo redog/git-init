@@ -39,13 +39,13 @@ fi
 # Attempt to retrieve the password
 if [[ "$OSTYPE" == "darwin"* ]]; then
   # macOS
-  if ! pass=$(bws secret get ${GH_TOKEN_ID:-"857d0c2c-cfe0-4e6d-995c-b1690020f8fb"} -o tsv | tail -n 1 | awk '{print $3}' 2>/dev/null); then
+  if ! pass=$(bws secret get "$GH_TOKEN_ID" -o json | jq -r '.value' 2>/dev/null); then
     echo "Failed to retrieve GitHub access token" >&2
     exit 1
   fi
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
   # Linux
-  if ! pass=$(bws secret get ${GH_TOKEN_ID:-"857d0c2c-cfe0-4e6d-995c-b1690020f8fb"} -o tsv | tail -n 1 | awk '{print $3}' 2>/dev/null); then
+  if ! pass=$(bws secret get "$GH_TOKEN_ID" -o json | jq -r '.value' 2>/dev/null); then
     echo "Problem retrieving GitHub access token" >&2
     exit 2
   fi
