@@ -11,10 +11,10 @@ mkdir -p "$INSTALL_DIR"
 # Print start message
 echo "Starting Bitwarden CLI installation..."
 
-# Check if wget is installed
-if ! command -v wget &> /dev/null; then
-    echo "wget is not installed. Installing wget..."
-    sudo apt-get update && sudo apt-get install wget -y
+# Check if curl is installed
+if ! command -v curl &> /dev/null; then
+    echo "curl is not installed. Installing curl..."
+    sudo apt-get update && sudo apt-get install curl -y
 fi
 
 # Check if unzip is installed
@@ -29,7 +29,7 @@ cd "$TEMP_DIR"
 
 # Download the Bitwarden CLI
 echo "Downloading Bitwarden CLI..."
-wget "$DOWNLOAD_URL" -O bw.zip
+curl -L "$DOWNLOAD_URL" -o bw.zip
 
 # Unzip the package
 echo "Extracting files..."
