@@ -37,7 +37,17 @@ This is the ID of the secret in Bitwarden Secrets Manager that stores your GitHu
 
 To get this ID, you first need to create a secret in Bitwarden Secrets Manager that contains your GitHub token. You can do this with the `bws` command:
 ```bash
-bws secret create '{"name":"github-token","value":"YOUR_GITHUB_TOKEN","projectIds":[]}'
+# Get the first project id - adjust for your specific secrets manager project
+project_id=$(bws project list | jq -r '.[0].id')
+
+# Store the GitHub access token as a secret named "github-access-token"
+bws secret create github-access-token "$GITHUB_ACCESS_TOKEN" "$project_id"
+
+# Get the ID of the secret we just created
+GH_TOKEN_ID=$(bws secret list "$project_id" | jq -r '.[] | select(.key == "github-access-token") | .id')
+
+# Export for later use in the session
+export GH_TOKEN_ID
 ```
 Then, you can list your secrets to get the ID:
 ```bash
