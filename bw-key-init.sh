@@ -35,10 +35,22 @@ ensure_session() {
     echo "=> Unlocking Bitwarden..."
     local session_output
     session_output=$(bw unlock --raw 2>&1 | tee /dev/tty | tail -n1)
+    if [ $? -ne 0 ]; then
+      echo "Error: bw unlock failed." >&2
+      return 1
+    fi
     if echo "$session_output" | grep -q "You are not logged in"; then
       echo "=> Logging into Bitwarden..."
       bw login
+      if [ $? -ne 0 ]; then
+        echo "Error: bw login failed." >&2
+        return 1
+      fi
       session_output=$(bw unlock --raw 2>&1 | tee /dev/tty | tail -n1)
+      if [ $? -ne 0 ]; then
+        echo "Error: bw unlock failed." >&2
+        return 1
+      fi
     fi
     if [[ -z "$session_output" ]] || ! bw status --session "$session_output" | grep -iq "unlocked"; then
       echo "Error: Failed to unlock Bitwarden." >&2
