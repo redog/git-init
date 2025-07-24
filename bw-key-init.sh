@@ -34,11 +34,11 @@ ensure_session() {
   if [[ -z "$BW_SESSION" ]] || ! bw status --session "$BW_SESSION" | grep -iq "unlocked"; then
     echo "=> Unlocking Bitwarden..."
     local session_output
-    session_output=$(bw unlock --raw)
+    session_output=$(bw unlock --raw 2>&1 | tee /dev/tty | tail -n1)
     if echo "$session_output" | grep -q "You are not logged in"; then
       echo "=> Logging into Bitwarden..."
       bw login
-      session_output=$(bw unlock --raw)
+      session_output=$(bw unlock --raw 2>&1 | tee /dev/tty | tail -n1)
     fi
     if [[ -z "$session_output" ]] || ! bw status --session "$session_output" | grep -iq "unlocked"; then
       echo "Error: Failed to unlock Bitwarden." >&2
