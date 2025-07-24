@@ -2,17 +2,21 @@ git-init
 ========
 
 ## Prerequisites
-  1. Curl - unzip - jq - git
+  1. Curl - unzip - git
+
+### Setup.sh will check for and install these if not found
+
+  * jq - jquery client
   
-  1. bws - bitwarden sdk (secrets manager)
+  * bws - bitwarden sdk (secrets manager)
   
-  1. bw - bitwarden cli
+  * bw - bitwarden cli
     
      ```
      bash <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/bws-install.sh)
      bash <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/bw-install.sh)
+     bash <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/jq-install.sh)
      ```
-     
 
 ## Get it and init it
 ### Source the initialization script so that environment variables such as `BW_SESSION` are exported to your current shell.
