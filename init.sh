@@ -82,8 +82,17 @@ main() {
     local status
     status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null)
     if [[ "$status" == "unauthenticated" || -z "$status" ]]; then
-      echo "🔑 Logging in to Bitwarden CLI using API key..."
-      bw login --apikey
+      if [[ -z "${BW_CLIENTSECRET:-}" ]]; then
+        read -s -p "Enter BW client secret (leave blank for email/password login): " BW_CLIENTSECRET
+        echo
+      fi
+      if [[ -n "${BW_CLIENTSECRET:-}" && -n "${BW_CLIENTID:-}" ]]; then
+        echo "🔑 Logging in to Bitwarden CLI using API key..."
+        BW_CLIENTSECRET="$BW_CLIENTSECRET" bw login --apikey
+      else
+        echo "🔑 Logging in to Bitwarden CLI..."
+        bw login
+      fi
       unset BW_SESSION
       ensure_session
     fi
@@ -98,8 +107,12 @@ main() {
     local status
     status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null)
     if [[ "$status" == "unauthenticated" || -z "$status" ]]; then
-      echo "❌ Bitwarden CLI is not logged in. Please run 'bw login --apikey' first." >&2
-      return 1
+      ensure_logged_in || return 1
+      status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null)
+      if [[ "$status" == "unauthenticated" || -z "$status" ]]; then
+        echo "❌ Bitwarden CLI login failed." >&2
+        return 1
+      fi
     fi
 
     echo "🔐 Unlocking Bitwarden vault... please enter your master password:"
@@ -113,11 +126,13 @@ main() {
     echo "✅ Vault unlocked successfully. Session key is now in your environment."
   }
 
+  ensure_logged_in
+  if ! ensure_session; then
+    fail 1 "Failed to unlock Bitwarden vault"
+  fi
+
   # Retrieve BWS access token if missing
   if [[ -z "${BWS_ACCESS_TOKEN:-}" ]]; then
-    if ! ensure_session; then
-      fail 1 "Failed to unlock Bitwarden vault"
-    fi
     echo "=> Retrieving BWS access token from Bitwarden..."
     BWS_ACCESS_TOKEN=$(bw get password "$BWS_ACCESS_TOKEN_ID" --session "$BW_SESSION" 2>/dev/null)
     if [[ -z "$BWS_ACCESS_TOKEN" ]]; then
