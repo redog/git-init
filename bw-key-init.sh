@@ -19,7 +19,7 @@ fi
 # Secret IDs from config
 #BW_API_KEY_ID
 #BWS_ACCESS_TOKEN_ID
-#BW_CLIENT_ID
+#BW_CLIENTID
 
 # Check if bws is installed.
 if ! command -v bws &> /dev/null; then
@@ -91,11 +91,11 @@ if [ -z "$secret_data" ]; then
 fi
 
 
-BW_CLIENT_SECRET=$(echo "$secret_data" | jq -r '.value')
+BW_CLIENTSECRET=$(echo "$secret_data" | jq -r '.value')
 
 # Check if the variables were populated.
-if [ -z "$BW_CLIENT_SECRET" ]; then
+if [ -z "$BW_CLIENTSECRET" ]; then
   echo "Error: Could not extract client_secret from the secret data.  Check the field names in your secret."
   fail 1
 fi
-export BW_CLIENT_ID BW_CLIENT_SECRET
+export BW_CLIENTID BW_CLIENTSECRET
