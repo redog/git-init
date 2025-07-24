@@ -104,7 +104,7 @@ main() {
 
     echo "🔐 Unlocking Bitwarden vault... please enter your master password:"
     local session
-    session=$(bw unlock --raw 2>/dev/null)
+    session=$(bw unlock --raw)
     if [[ $? -ne 0 || -z "$session" || "$session" == "You are not logged in."* ]]; then
       echo "❌ Unlock failed. Please check your password." >&2
       return 1
