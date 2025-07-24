@@ -116,7 +116,7 @@ if [[ $choice -eq 0 ]]; then
     echo "Warning: config.env file not found." >&2
   fi
 
-  python3 ${MYINIT}/mkrepo.py
+  bash ${MYINIT}/mkrepo.sh
 else
   repos=$(get_repositories "${GITHUB_ACCESS_TOKEN}")
     if [[ -z "$repos" ]]; then

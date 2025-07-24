@@ -2,7 +2,7 @@ git-init
 ========
 
 ## Prerequisites
-  1. Curl - unzip - python3 - python-venv - jq - wget
+  1. Curl - unzip - jq - wget - git
   
   1. bws - bitwarden sdk (secrets manager)
   
@@ -13,16 +13,6 @@ git-init
      bash <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/bw-install.sh)
      ```
      
-  1. requests python module
-    
-     ```
-     python -m venv venv
-     source venv/bin/activate
-     pip install requests  
-     read BWS_ACCESS_TOKEN
-     export BWS_ACCESS_TOKEN
-     echo -n "$BWS_ACCESS_TOKEN" | secret-tool store --label="Bitwarden Access Token" bitwarden accesstoken
-     ```
 
 ## Get it and init it
 
