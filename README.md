@@ -15,20 +15,9 @@ git-init
      
 
 ## Get it and init it
+### Source the initialization script so that environment variables such as `BW_SESSION` are exported to your current shell.
 
 ```
-bash <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/init.sh)
-```
-
-## Source the initialization script so that environment variables such as `BW_SESSION` are exported to your current shell.
-
-```
-source ./init.sh
-```
-
-### One-liner to source from GitHub
-
-```bash
 source <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/init.sh)
 ```
 
@@ -44,16 +33,10 @@ version.
  
 ### Git Credential Helper
 
-`init.sh` will automatically create the `git-credential-env` helper in
-`~/.config` when it isn't found, so you generally don't need to copy it
-manually. The helper supplies your GitHub token at runtime without
-storing it in git config. To set it up yourself:
+`init.sh` will automatically create a `git-credential-env` helper in
+`~/.config` when it isn't found. The helper supplies your GitHub 
+token at runtime without storing it in git config. 
 
-```bash
-mkdir -p ~/.config
-cp git-credential-env ~/.config/
-git config --global credential.helper '!~/.config/git-credential-env'
-```
 The helper expects your token in the `GITHUB_ACCESS_TOKEN` environment variable
 whenever Git needs authentication. Avoid setting `user.github.token` in any git
 configuration; credentials are provided dynamically by the helper.
