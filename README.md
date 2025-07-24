@@ -1,5 +1,8 @@
-git-init - One liner to initalizes a github repository and configure it locally. Requires GitHub API and bitwarden cli API tokens saved in bitwarden secrets manager, and bitwarden secrets manager API token stored in the bitwarden vault. 
-========
+# git-init
+
+### One liner to initalizes a github repository and configure it locally. 
+### Requires GitHub API and bitwarden cli API tokens saved in bitwarden secrets manager, and bitwarden secrets manager API token stored in the bitwarden vault. 
+
 
 ## Prerequisites
   1. Curl - unzip - git
@@ -10,13 +13,6 @@ Run `./setup.sh` to install the following tools if they are not already availabl
   * jq - JSON processor
   * bws - Bitwarden SDK (secrets manager)
   * bw - Bitwarden CLI
-
-## Get it and init it
-### Source the initialization script so that environment variables such as `BW_SESSION` are exported to your current shell.
-
-```
-source <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/init.sh)
-```
 
 The script will automatically log in to Bitwarden using your API key (if available) before unlocking the vault, so no manual `bw login` step is required.
 
@@ -87,6 +83,13 @@ bw get password bitwarden-secrets-manager-key
 bw get password a90cacf8-8cbd-4d7a-be58-b3240149cd3e
 ```
 The output will be a JSON array of your vault items. Find the one you just created and copy the `id` value.
+
+## Get it and init it
+### Source the initialization script so that environment variables such as `BW_SESSION` are exported to your current shell.
+
+```
+source <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/init.sh)
+```
 
 ### Git Credential Helper
 
