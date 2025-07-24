@@ -1,5 +1,22 @@
 #!/bin/bash
 
+# Determine whether the script is being sourced or executed. If sourced, we
+# should `return` on failure so the parent shell isn't terminated.
+sourced=0
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  sourced=1
+fi
+
+# Helper to exit or return based on how the script was invoked
+fail() {
+  local code=${1:-1}
+  if [[ $sourced -eq 1 ]]; then
+    return "$code"
+  else
+    exit "$code"
+  fi
+}
+
 # Loads the Bitwarden API Key into environment variables from secrets manager.
 if [[ -f "config.env" ]]; then
   source "config.env"
@@ -26,7 +43,7 @@ fi
 # Check if jq is installed.
 if ! command -v jq &> /dev/null; then
   echo "Error: jq command not found.  Please install jq." >&2
-  exit 1
+  fail 1
 fi
 
 # Function to ensure BW_SESSION is set and unlocked
@@ -61,7 +78,7 @@ ensure_session() {
 }
 
 if ! ensure_session; then
-  exit 1
+  fail 1
 fi
 
 # If BWS_ACCESS_TOKEN isn't set, try retrieving it using bw
