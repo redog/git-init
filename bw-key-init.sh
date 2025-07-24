@@ -19,7 +19,7 @@ fi
 # Secret IDs from config
 #BW_API_KEY_ID
 #BWS_ACCESS_TOKEN_ID
-#BW_CLIENT_ID
+#BW_CLIENTID
 
 # Check if bws is installed.
 if ! command -v bws &> /dev/null; then
@@ -45,7 +45,7 @@ ensure_logged_in() {
   status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null)
   if [[ "$status" == "unauthenticated" || -z "$status" ]]; then
     echo "🔑 Logging in to Bitwarden CLI using API key..."
-    bw login --apikey --clientid "$BW_CLIENT_ID" --clientsecret "$BW_CLIENT_SECRET" >/dev/null
+    bw login --apikey >/dev/null
     # Need to unlock again after logging in
     unset BW_SESSION
     ensure_session
@@ -103,16 +103,15 @@ if [ -z "$secret_data" ]; then
 fi
 
 
-BW_CLIENT_SECRET=$(echo "$secret_data" | jq -r '.value')
+BW_CLIENTSECRET=$(echo "$secret_data" | jq -r '.value')
 
 # Check if the variables were populated.
-if [ -z "$BW_CLIENT_SECRET" ]; then
+if [ -z "$BW_CLIENTSECRET" ]; then
   echo "Error: Could not extract client_secret from the secret data.  Check the field names in your secret."
   fail 1
 fi
-export BW_CLIENT_ID BW_CLIENT_SECRET
 
 # Ensure we're logged in with the API key for future sessions
 ensure_logged_in
-# Finally ensure the vault is unlocked for this session
-ensure_session
+
+export BW_CLIENTID BW_CLIENTSECRET
