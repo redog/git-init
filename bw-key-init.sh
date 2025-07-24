@@ -17,8 +17,9 @@ else
 fi
 
 # Secret IDs from config
-SECRET_ID="$BW_API_KEY_ID"
-BWS_TOKEN_ITEM_ID="$BWS_ACCESS_TOKEN_ID"
+#BW_API_KEY_ID
+#BWS_ACCESS_TOKEN_ID
+#BW_CLIENTID
 
 # Check if bws is installed.
 if ! command -v bws &> /dev/null; then
@@ -40,32 +41,23 @@ fi
 
 # Function to ensure BW_SESSION is set and unlocked
 ensure_session() {
-  if [[ -z "$BW_SESSION" ]] || ! bw status --session "$BW_SESSION" | grep -iq "unlocked"; then
-    echo "=> Unlocking Bitwarden..."
-    local session_output
-    session_output=$(bw unlock --raw 2>/dev/null)
-    if [ $? -ne 0 ]; then
-      echo "Error: bw unlock failed." >&2
-      fail 1
-    fi
-    if echo "$session_output" | grep -q "You are not logged in"; then
-      echo "=> Logging into Bitwarden..."
-      bw login --apikey --clientid "$BW_CLIENTID" --clientsecret "$BW_CLIENTSECRET"
-      if [ $? -ne 0 ]; then
-        echo "Error: bw login failed." >&2
-        fail 1
-      fi
-      session_output=$(bw unlock --raw 2>/dev/null)
-      if [ $? -ne 0 ]; then
-        echo "Error: bw unlock failed." >&2
-        fail 1
-      fi
-    fi
-    if [[ -z "$session_output" ]] || ! bw status --session "$session_output" | grep -iq "unlocked"; then
-      echo "Error: Failed to unlock Bitwarden." >&2
-      return 1
-    fi
-    export BW_SESSION="$session_output"
+  if [ -n "$BWS_SESSION" ]; then
+    echo "✅ Vault is already unlocked."
+    return 0 # Use 'return' so sourcing doesn't exit the terminal
+  fi
+
+  echo "🔐 Unlocking Bitwarden vault... please enter your master password:"
+
+  # Prompt for password, get the raw session key, and export it
+  export BWS_SESSION=$(bw unlock --raw)
+
+  # Check if the unlock command was successful
+  if [ $? -eq 0 ]; then
+    echo "✅ Vault unlocked successfully. Session key is now in your environment."
+  else
+    echo "❌ Unlock failed. Please check your password."
+    # Unset the variable in case of failure
+    unset BWS_SESSION
   fi
 }
 
@@ -75,12 +67,8 @@ fi
 
 # If BWS_ACCESS_TOKEN isn't set, try retrieving it using bw
 if [[ -z "$BWS_ACCESS_TOKEN" ]]; then
-  if [[ -z "$BWS_TOKEN_ITEM_ID" ]]; then
-    echo "Error: BWS_ACCESS_TOKEN is not set and BWS_ACCESS_TOKEN_ID is unknown." >&2
-    fail 1
-  fi
   echo "=> Retrieving BWS access token from Bitwarden..."
-  BWS_ACCESS_TOKEN=$(bw get password "$BWS_TOKEN_ITEM_ID" --session "$BW_SESSION" 2>/dev/null)
+  BWS_ACCESS_TOKEN=$(bw get password "$BWS_ACCESS_TOKEN_ID" --session "$BW_SESSION" 2>/dev/null)
   if [[ -z "$BWS_ACCESS_TOKEN" ]]; then
     echo "Error: Failed to retrieve BWS access token." >&2
     fail 1
@@ -89,11 +77,11 @@ if [[ -z "$BWS_ACCESS_TOKEN" ]]; then
 fi
 
 # Retrieve the secret data as JSON.
-secret_data=$(bws secret get "$SECRET_ID" -o json 2> /dev/null)
+secret_data=$(bws secret get "$BW_API_KEY_ID" -o json 2> /dev/null)
 
 # Check if the secret retrieval was successful
 if [ $? -ne 0 ]; then
-  echo "Error: Failed to retrieve secret with ID '$SECRET_ID'."
+  echo "Error: Failed to retrieve secret with ID '$BW_API_KEY_ID'."
   fail 1
 fi
 #Check if secret_data is empty
@@ -103,12 +91,11 @@ if [ -z "$secret_data" ]; then
 fi
 
 
-BW_CLIENTID=$(echo "$secret_data" | jq -r '.client_id')
-BW_CLIENTSECRET=$(echo "$secret_data" | jq -r '.client_secret')
+BW_CLIENTSECRET=$(echo "$secret_data" | jq -r '.value')
 
 # Check if the variables were populated.
-if [ -z "$BW_CLIENTID" ] || [ -z "$BW_CLIENTSECRET" ]; then
-  echo "Error: Could not extract client_id or client_secret from the secret data.  Check the field names in your secret."
+if [ -z "$BW_CLIENTSECRET" ]; then
+  echo "Error: Could not extract client_secret from the secret data.  Check the field names in your secret."
   fail 1
 fi
 export BW_CLIENTID BW_CLIENTSECRET
