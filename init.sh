@@ -83,7 +83,7 @@ main() {
     status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null)
     if [[ "$status" == "unauthenticated" || -z "$status" ]]; then
       echo "🔑 Logging in to Bitwarden CLI using API key..."
-      bw login --apikey >/dev/null
+      bw login --apikey
       unset BW_SESSION
       ensure_session
     fi
