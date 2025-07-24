@@ -7,6 +7,10 @@ choice=-1
 sourced=0
 [[ ${BASH_SOURCE[0]} != "$0" ]] && sourced=1
 
+if (( ! sourced )); then
+  echo "Tip: run 'source init.sh' (or 'source <(curl -sS .../init.sh)') to keep variables in your shell."
+fi
+
 # Exit or return based on invocation
 safe_exit() {
   local code=${1:-0}
