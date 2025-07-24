@@ -100,3 +100,8 @@ token at runtime without storing it in git config.
 The helper expects your token in the `GITHUB_ACCESS_TOKEN` environment variable
 whenever Git needs authentication. Avoid setting `user.github.token` in any git
 configuration; credentials are provided dynamically by the helper.
+
+
+### mkrepo.sh
+
+With the access token set in the environemnt this script create a GitHub repository and initialize it locally.
