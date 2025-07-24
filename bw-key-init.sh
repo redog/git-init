@@ -6,9 +6,12 @@ fail() {
     (return 0 2>/dev/null) && return 1 || exit 1
 }
 
+# Determine the directory of this script so we can reliably load the config
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Loads the Bitwarden API Key into environment variables from secrets manager.
-if [[ -f "config.env" ]]; then
-  source "config.env"
+if [[ -f "$SCRIPT_DIR/config.env" ]]; then
+  source "$SCRIPT_DIR/config.env"
 else
   echo "Warning: config.env file not found." >&2
 fi
@@ -40,19 +43,19 @@ ensure_session() {
   if [[ -z "$BW_SESSION" ]] || ! bw status --session "$BW_SESSION" | grep -iq "unlocked"; then
     echo "=> Unlocking Bitwarden..."
     local session_output
-    session_output=$(bw unlock --raw 2>&1 | tee /dev/tty | tail -n1)
+    session_output=$(bw unlock --raw 2>/dev/null)
     if [ $? -ne 0 ]; then
       echo "Error: bw unlock failed." >&2
       fail 1
     fi
     if echo "$session_output" | grep -q "You are not logged in"; then
       echo "=> Logging into Bitwarden..."
-      bw login
+      bw login --apikey --clientid "$BW_CLIENTID" --clientsecret "$BW_CLIENTSECRET"
       if [ $? -ne 0 ]; then
         echo "Error: bw login failed." >&2
         fail 1
       fi
-      session_output=$(bw unlock --raw 2>&1 | tee /dev/tty | tail -n1)
+      session_output=$(bw unlock --raw 2>/dev/null)
       if [ $? -ne 0 ]; then
         echo "Error: bw unlock failed." >&2
         fail 1
