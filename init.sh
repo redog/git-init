@@ -156,7 +156,12 @@ main() {
     git config --global user.github.login.name "$gitusername"
   fi
 
-  email=$(git config --global user.email "$gitusername"@users.noreply.github.com)
+  email=$(git config --global user.email || echo "${gitusername}@users.noreply.github.com")
+  if [[ -z "$(git config --global user.email || true)" ]]; then
+    read -p "Enter your email [${gitusername}@users.noreply.github.com]: " email
+    email=${email:-"${gitusername}@users.noreply.github.com"}
+    git config --global user.email "$email"
+  fi
 
   name=$(git config --global user.name || true)
   if [[ -z "$name" ]]; then
