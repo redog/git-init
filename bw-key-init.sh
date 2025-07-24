@@ -48,7 +48,9 @@ ensure_session() {
   fi
 }
 
-ensure_session
+if ! ensure_session; then
+  exit 1
+fi
 
 # If BWS_ACCESS_TOKEN isn't set, try retrieving it using bw
 if [[ -z "$BWS_ACCESS_TOKEN" ]]; then
