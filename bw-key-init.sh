@@ -41,7 +41,7 @@ fi
 
 # Function to ensure BW_SESSION is set and unlocked
 ensure_session() {
-  if [ -n "$BWS_SESSION" ]; then
+  if [ -n "$BW_SESSION" ]; then
     echo "✅ Vault is already unlocked."
     return 0 # Use 'return' so sourcing doesn't exit the terminal
   fi
@@ -49,7 +49,7 @@ ensure_session() {
   echo "🔐 Unlocking Bitwarden vault... please enter your master password:"
 
   # Prompt for password, get the raw session key, and export it
-  export BWS_SESSION=$(bw unlock --raw)
+  export BW_SESSION=$(bw unlock --raw)
 
   # Check if the unlock command was successful
   if [ $? -eq 0 ]; then
@@ -57,7 +57,7 @@ ensure_session() {
   else
     echo "❌ Unlock failed. Please check your password."
     # Unset the variable in case of failure
-    unset BWS_SESSION
+    unset BW_SESSION
   fi
 }
 
