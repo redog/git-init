@@ -78,6 +78,26 @@ main() {
     fi
   done
 
+  helper_script="${HOME}/.config/git-credential-env"
+  if [[ ! -f $helper_script ]]; then
+    mkdir -p "${HOME}/.config"
+    cat >"$helper_script" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+op=${1:-}
+while IFS= read -r line && [[ -n $line ]]; do :; done
+[[ $op == get ]] || exit 0
+token=${GITHUB_ACCESS_TOKEN:-}
+if [[ -z $token ]]; then
+    [[ -n ${GH_TOKEN_ID:-} ]] || { echo "GH_TOKEN_ID not set" >&2; exit 1; }
+    token=$(bws secret get "$GH_TOKEN_ID" -o json | jq -r .value)
+fi
+echo "username=x-access-token"
+echo "password=$token"
+EOF
+    chmod +x "$helper_script"
+  fi
+
   ensure_logged_in() {
     local status
     status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null)
