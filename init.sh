@@ -7,6 +7,10 @@ choice=-1
 sourced=0
 [[ ${BASH_SOURCE[0]} != "$0" ]] && sourced=1
 
+if (( ! sourced )); then
+  echo "Tip: run 'source init.sh' (or 'source <(curl -sS .../init.sh)') to keep variables in your shell."
+fi
+
 # Exit or return based on invocation
 safe_exit() {
   local code=${1:-0}
@@ -77,6 +81,26 @@ main() {
       fail 1 "Error: $cmd command not found."
     fi
   done
+
+  helper_script="${HOME}/.config/git-credential-env"
+  if [[ ! -f $helper_script ]]; then
+    mkdir -p "${HOME}/.config"
+    cat >"$helper_script" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+op=${1:-}
+while IFS= read -r line && [[ -n $line ]]; do :; done
+[[ $op == get ]] || exit 0
+token=${GITHUB_ACCESS_TOKEN:-}
+if [[ -z $token ]]; then
+    [[ -n ${GH_TOKEN_ID:-} ]] || { echo "GH_TOKEN_ID not set" >&2; exit 1; }
+    token=$(bws secret get "$GH_TOKEN_ID" -o json | jq -r .value)
+fi
+echo "username=x-access-token"
+echo "password=$token"
+EOF
+    chmod +x "$helper_script"
+  fi
 
   ensure_logged_in() {
     local status
