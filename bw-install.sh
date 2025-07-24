@@ -3,7 +3,10 @@
 # Define variables
 BW_VERSION="2025.2.0"
 DOWNLOAD_URL="https://github.com/bitwarden/clients/releases/download/cli-v${BW_VERSION}/bw-linux-${BW_VERSION}.zip"
-INSTALL_DIR="/usr/local/bin"
+INSTALL_DIR="${HOME}/.local/bin"
+
+# Ensure the installation directory exists
+mkdir -p "$INSTALL_DIR"
 
 # Print start message
 echo "Starting Bitwarden CLI installation..."
@@ -37,11 +40,21 @@ chmod +x bw
 
 # Move the binary to the installation directory
 echo "Installing Bitwarden CLI to $INSTALL_DIR..."
-sudo mv bw "$INSTALL_DIR"
+mv bw "$INSTALL_DIR"
+
+# Ensure the binary is executable in its final location
+chmod +x "$INSTALL_DIR/bw"
 
 # Clean up
 cd - > /dev/null
 rm -rf "$TEMP_DIR"
+
+# Check if INSTALL_DIR is in PATH
+if [[ ":$PATH:" != *":${INSTALL_DIR}:"* ]]; then
+    echo "Adding ${INSTALL_DIR} to PATH in ~/.bashrc"
+    echo "export PATH=\"\$PATH:${INSTALL_DIR}\"" >> "${HOME}/.bashrc"
+    echo "Please run 'source ~/.bashrc' or start a new terminal session"
+fi
 
 # Verify installation
 if command -v bw &> /dev/null; then
