@@ -10,7 +10,11 @@ fail() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Loads the Bitwarden API Key into environment variables from secrets manager.
-if [[ -f "$SCRIPT_DIR/config.env" ]]; then
+if [[ -n "${GIT_INIT_CONFIG:-}" && -f "${GIT_INIT_CONFIG}" ]]; then
+  source "${GIT_INIT_CONFIG}"
+elif [[ -f "$HOME/.git-init.env" ]]; then
+  source "$HOME/.git-init.env"
+elif [[ -f "$SCRIPT_DIR/config.env" ]]; then
   source "$SCRIPT_DIR/config.env"
 else
   echo "Warning: config.env file not found." >&2
