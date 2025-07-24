@@ -95,13 +95,21 @@ main() {
       return 0
     fi
 
-    echo "🔐 Unlocking Bitwarden vault... please enter your master password:"
-    export BW_SESSION=$(bw unlock --raw)
-    if [[ $? -ne 0 ]]; then
-      echo "❌ Unlock failed. Please check your password." >&2
-      unset BW_SESSION
+    local status
+    status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null)
+    if [[ "$status" == "unauthenticated" || -z "$status" ]]; then
+      echo "❌ Bitwarden CLI is not logged in. Please run 'bw login --apikey' first." >&2
       return 1
     fi
+
+    echo "🔐 Unlocking Bitwarden vault... please enter your master password:"
+    local session
+    session=$(bw unlock --raw 2>/dev/null)
+    if [[ $? -ne 0 || -z "$session" || "$session" == "You are not logged in."* ]]; then
+      echo "❌ Unlock failed. Please check your password." >&2
+      return 1
+    fi
+    export BW_SESSION="$session"
     echo "✅ Vault unlocked successfully. Session key is now in your environment."
   }
 
