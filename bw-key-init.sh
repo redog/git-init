@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Helper to exit or return based on how the script was invoked
+fail() {
+    echo "❌ Failed to load secret" >&2
+    (return 0 2>/dev/null) && return 1 || exit 1
+}
+
 # Loads the Bitwarden API Key into environment variables from secrets manager.
 if [[ -f "config.env" ]]; then
   source "config.env"
@@ -14,19 +20,19 @@ BWS_TOKEN_ITEM_ID="$BWS_ACCESS_TOKEN_ID"
 # Check if bws is installed.
 if ! command -v bws &> /dev/null; then
   echo "Error: bws command not found.  Please install the Bitwarden Secrets Manager CLI." >&2
-  return 1
+  fail 1
 fi
 
 # Check if bw is installed.
 if ! command -v bw &> /dev/null; then
   echo "Error: bw command not found.  Please install the Bitwarden CLI." >&2
-  return 1
+  fail 1
 fi
 
 # Check if jq is installed.
 if ! command -v jq &> /dev/null; then
   echo "Error: jq command not found.  Please install jq." >&2
-  exit 1
+  fail 1
 fi
 
 # Function to ensure BW_SESSION is set and unlocked
@@ -37,19 +43,19 @@ ensure_session() {
     session_output=$(bw unlock --raw 2>&1 | tee /dev/tty | tail -n1)
     if [ $? -ne 0 ]; then
       echo "Error: bw unlock failed." >&2
-      return 1
+      fail 1
     fi
     if echo "$session_output" | grep -q "You are not logged in"; then
       echo "=> Logging into Bitwarden..."
       bw login
       if [ $? -ne 0 ]; then
         echo "Error: bw login failed." >&2
-        return 1
+        fail 1
       fi
       session_output=$(bw unlock --raw 2>&1 | tee /dev/tty | tail -n1)
       if [ $? -ne 0 ]; then
         echo "Error: bw unlock failed." >&2
-        return 1
+        fail 1
       fi
     fi
     if [[ -z "$session_output" ]] || ! bw status --session "$session_output" | grep -iq "unlocked"; then
@@ -61,20 +67,20 @@ ensure_session() {
 }
 
 if ! ensure_session; then
-  exit 1
+  fail 1
 fi
 
 # If BWS_ACCESS_TOKEN isn't set, try retrieving it using bw
 if [[ -z "$BWS_ACCESS_TOKEN" ]]; then
   if [[ -z "$BWS_TOKEN_ITEM_ID" ]]; then
     echo "Error: BWS_ACCESS_TOKEN is not set and BWS_ACCESS_TOKEN_ID is unknown." >&2
-    return 1
+    fail 1
   fi
   echo "=> Retrieving BWS access token from Bitwarden..."
   BWS_ACCESS_TOKEN=$(bw get password "$BWS_TOKEN_ITEM_ID" --session "$BW_SESSION" 2>/dev/null)
   if [[ -z "$BWS_ACCESS_TOKEN" ]]; then
     echo "Error: Failed to retrieve BWS access token." >&2
-    return 1
+    fail 1
   fi
   export BWS_ACCESS_TOKEN
 fi
@@ -85,12 +91,12 @@ secret_data=$(bws secret get "$SECRET_ID" -o json 2> /dev/null)
 # Check if the secret retrieval was successful
 if [ $? -ne 0 ]; then
   echo "Error: Failed to retrieve secret with ID '$SECRET_ID'."
-  return 1
+  fail 1
 fi
 #Check if secret_data is empty
 if [ -z "$secret_data" ]; then
     echo "Error: retrieved empty secret"
-    return 1
+    fail 1
 fi
 
 
@@ -100,6 +106,6 @@ BW_CLIENTSECRET=$(echo "$secret_data" | jq -r '.client_secret')
 # Check if the variables were populated.
 if [ -z "$BW_CLIENTID" ] || [ -z "$BW_CLIENTSECRET" ]; then
   echo "Error: Could not extract client_id or client_secret from the secret data.  Check the field names in your secret."
-  return 1
+  fail 1
 fi
 export BW_CLIENTID BW_CLIENTSECRET
