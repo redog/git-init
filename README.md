@@ -47,3 +47,14 @@ store them elsewhere by creating `~/.git-init.env` or by setting the
 `GIT_INIT_CONFIG` environment variable to the path of your preferred config
 file. The scripts will use that file if present before falling back to the repo
 version.
+ 
+### Git Credential Helper
+
+Use the provided `git-credential-env` script to supply your GitHub token at runtime
+without storing it in git config:
+
+```bash
+mkdir -p ~/.config
+cp git-credential-env ~/.config/
+git config --global credential.helper '!~/.config/git-credential-env'
+```
