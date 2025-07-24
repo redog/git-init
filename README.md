@@ -48,3 +48,6 @@ mkdir -p ~/.config
 cp git-credential-env ~/.config/
 git config --global credential.helper '!~/.config/git-credential-env'
 ```
+The helper expects your token in the `GITHUB_ACCESS_TOKEN` environment variable
+whenever Git needs authentication. Avoid setting `user.github.token` in any git
+configuration; credentials are provided dynamically by the helper.
