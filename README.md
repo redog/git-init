@@ -80,9 +80,11 @@ bw get template item \
 | bw encode \
 | bw create item
 ```
-Then, you can list your vault items to get the ID:
+Then, you can list your vault items to get the ID or get the token directly with the name/ID:
 ```bash
-bw list items --search bws-access-token
+bw list items --search secrets-manager
+bw get password bitwarden-secrets-manager-key
+bw get password a90cacf8-8cbd-4d7a-be58-b3240149cd3e
 ```
 The output will be a JSON array of your vault items. Find the one you just created and copy the `id` value.
 
