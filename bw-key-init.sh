@@ -34,7 +34,7 @@ ensure_session() {
   if [[ -z "$BW_SESSION" ]] || ! bw status --session "$BW_SESSION" | grep -iq "unlocked"; then
     echo "=> Unlocking Bitwarden..."
     local session_output
-    session_output=$(bw unlock --raw)
+    session_output=$(bw unlock --raw 2>&1 | tee /dev/tty | tail -n1)
     if [ $? -ne 0 ]; then
       echo "Error: bw unlock failed." >&2
       return 1
@@ -46,7 +46,7 @@ ensure_session() {
         echo "Error: bw login failed." >&2
         return 1
       fi
-      session_output=$(bw unlock --raw)
+      session_output=$(bw unlock --raw 2>&1 | tee /dev/tty | tail -n1)
       if [ $? -ne 0 ]; then
         echo "Error: bw unlock failed." >&2
         return 1
@@ -60,7 +60,9 @@ ensure_session() {
   fi
 }
 
-ensure_session
+if ! ensure_session; then
+  exit 1
+fi
 
 # If BWS_ACCESS_TOKEN isn't set, try retrieving it using bw
 if [[ -z "$BWS_ACCESS_TOKEN" ]]; then
