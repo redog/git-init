@@ -65,7 +65,20 @@ This is the ID of the login item in your Bitwarden vault that stores your Bitwar
 
 To get this ID, you first need to create a login item in your Bitwarden vault that contains your BWS access token. You can do this with the `bw` command:
 ```bash
-bw create item '{"type":1,"name":"bws-access-token","login":{"uris":[{"uri":"https://vault.bitwarden.com","match":null}],"username":"bws-access-token","password":"YOUR_BWS_ACCESS_TOKEN"}}'
+bw get template item \
+| jq --arg name  "bitwarden-secrets-manager-key" \
+     --arg notes "Imported via CLI" \
+     --arg user  "$BWS_ACCESS_TOKEN_ID" \
+     --arg pass  "$BWS_ACCESS_TOKEN" '
+      .name  = $name
+    | .notes = $notes
+    | .login = {                       # create the sub‑object in one shot
+        username: $user,
+        password: $pass,
+        uris: [ { uri: "https://bitwarden.com", match: 0 } ]
+      }' \
+| bw encode \
+| bw create item
 ```
 Then, you can list your vault items to get the ID:
 ```bash
