@@ -40,6 +40,14 @@ The `bw-key-init.sh` script will automatically log in to Bitwarden using your AP
 key (if available) before unlocking the vault, so no manual `bw login` step is
 required.
 
+## Configuration
+
+Secret IDs are normally read from `config.env` inside this repository. You can
+store them elsewhere by creating `~/.git-init.env` or by setting the
+`GIT_INIT_CONFIG` environment variable to the path of your preferred config
+file. The scripts will use that file if present before falling back to the repo
+version.
+ 
 ### Git Credential Helper
 
 Use the provided `git-credential-env` script to supply your GitHub token at runtime

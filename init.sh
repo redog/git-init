@@ -106,7 +106,11 @@ if [[ $choice -eq 0 ]]; then
     fi
   fi
 
-  if [[ -f "${MYINIT}/config.env" ]]; then
+  if [[ -n "${GIT_INIT_CONFIG:-}" && -f "${GIT_INIT_CONFIG}" ]]; then
+    source "${GIT_INIT_CONFIG}"
+  elif [[ -f "$HOME/.git-init.env" ]]; then
+    source "$HOME/.git-init.env"
+  elif [[ -f "${MYINIT}/config.env" ]]; then
     source "${MYINIT}/config.env"
   else
     echo "Warning: config.env file not found." >&2
