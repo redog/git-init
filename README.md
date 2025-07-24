@@ -1,4 +1,4 @@
-git-init
+git-init - One liner to initalizes a github repository and configure it locally. Requires GitHub API and bitwarden cli API tokens saved in bitwarden secrets manager, and bitwarden secrets manager API token stored in the bitwarden vault. 
 ========
 
 ## Prerequisites
