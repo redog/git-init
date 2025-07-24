@@ -89,7 +89,8 @@ if [[ -z $(git config --global --get user.github.token) ]]; then
   git config user.github.token "$token"
 fi
 if [[ -z $(git config --global --get credential.helper) ]]; then
-  git config --global credential.helper 'cache --timeout=1800'
+  git config --global credential.helper "!${HOME}/.config/git-credential-env"                                                                                 
+
 fi
 if [[ -z $(git config --global --get push.default) ]]; then
   git config --global push.default simple
@@ -101,7 +102,8 @@ if [[ -z ${repo_exists} ]]; then
   exit 1
 fi
 
-git remote add origin "https://${token}@github.com/${username}/${repo}.git"
+git remote add origin "https://github.com/${username}/${repo}.git"
+
 echo  "${repo} by ${username}" > README.md
 curl https://www.gnu.org/licenses/gpl-3.0.txt > LICENSE
 
