@@ -20,15 +20,13 @@ git-init
 bash <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/init.sh)
 ```
 
-## Source the key initialization script so that environment variables such as `BW_SESSION` are exported to your current shell.
+## Source the initialization script so that environment variables such as `BW_SESSION` are exported to your current shell.
 
 ```
-./init.sh && source ./bw-key-init.sh
+source ./init.sh
 ```
 
-The `bw-key-init.sh` script will automatically log in to Bitwarden using your API
-key (if available) before unlocking the vault, so no manual `bw login` step is
-required.
+The script will automatically log in to Bitwarden using your API key (if available) before unlocking the vault, so no manual `bw login` step is required.
 
 ## Configuration
 

@@ -1,8 +1,29 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
 MYINIT="git-init"
 choice=-1
+
+# Determine if the script was sourced or executed
+sourced=0
+[[ ${BASH_SOURCE[0]} != "$0" ]] && sourced=1
+
+# Exit or return based on invocation
+safe_exit() {
+  local code=${1:-0}
+  if (( sourced )); then
+    return "$code"
+  else
+    exit "$code"
+  fi
+}
+
+# Print an error message then exit/return with the given status
+fail() {
+  local code=${1:-1}
+  shift
+  [[ $# -gt 0 ]] && echo "$*" >&2
+  safe_exit "$code"
+}
 
 choose() {
   options=("$@")
@@ -26,121 +47,174 @@ get_repositories() {
 #  username="$2"
   if ! response=$(curl -H "Authorization: token ${token}" "https://api.github.com/user/repos" 2>&1); then
     echo "Failed to fetch repositories." >&2
-    exit 3
+    safe_exit 3
   fi
   echo "$response" | grep -o '"full_name":\s*"[^"]*"' | sed -E 's/"full_name":[[:space:]]*"([^"]*)"/\1/'
 }
 
-if [[ -z $BWS_ACCESS_TOKEN ]]; then
-  echo "Bitwarden Access Token not set check environment."
-  exit 6
-fi
-
-# Attempt to retrieve the password
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  # macOS
-  if ! pass=$(bws secret get "$GH_TOKEN_ID" -o json | jq -r '.value' 2>/dev/null); then
-    echo "Failed to retrieve GitHub access token" >&2
-    exit 1
+main() {
+  if (( sourced )); then
+    saved_opts="$(set +o)"
   fi
-elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-  # Linux
-  if ! pass=$(bws secret get "$GH_TOKEN_ID" -o json | jq -r '.value' 2>/dev/null); then
-    echo "Problem retrieving GitHub access token" >&2
-    exit 2
-  fi
+  set -euo pipefail
 
-elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
-  # Windows
-  echo "Windows not yet supported"
-  exit 4
-else
-  # Unknown OS
-  echo "Unsupported OS"
-  exit 5
-fi
-
-gitusername=$(git config --global user.github.login.name)
-
-if [[ -z "$gitusername" ]]; then
-  read -p "Enter your GitHub username: " gitusername
-  git config --global user.github.login.name "$gitusername"
-fi
-
-email=$(git config --global user.email "$gitusername"@users.noreply.github.com)
-
-name=$(git config --global user.name )
-
-if [[ -z "$name" ]]; then
-  read -p "Enter your Full Name: " name
-  git config --global user.name "$name"
-fi
-
-export GITHUB_ACCESS_TOKEN="$pass"
-
-if [[ -z $GITHUB_ACCESS_TOKEN ]]; then
-  echo "GitHub Access Token not set check environment."
-  exit 6
-fi
-
-echo ""
-echo "What would you like to do?"
-choose "Create a new repository" "Clone an existing repository"
-
-
-if [[ $choice -eq 0 ]]; then
-  # Determine the script's directory
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  # Check if we're inside a git repository
-  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    # Script is being run from within a git repo
-    echo "Script is running from within a git repository.  Further cloning is not recommended."
-    echo "Please run this script from outside of a git repository."
-    exit 1
-  elif [[ -z "$SCRIPT_DIR" || "$SCRIPT_DIR" == "." ]]; then
-    git clone https://github.com/$gitusername/${MYINIT}
-  else
-    # Script is being run from the filesystem, but not within a git repo
-    if [[ ! -d "$MYINIT" ]]; then
-      git clone https://github.com/$gitusername/${MYINIT} "$MYINIT"
-    fi
-  fi
 
+  # Load configuration for secret IDs
   if [[ -n "${GIT_INIT_CONFIG:-}" && -f "${GIT_INIT_CONFIG}" ]]; then
     source "${GIT_INIT_CONFIG}"
   elif [[ -f "$HOME/.git-init.env" ]]; then
     source "$HOME/.git-init.env"
-  elif [[ -f "${MYINIT}/config.env" ]]; then
-    source "${MYINIT}/config.env"
+  elif [[ -f "${SCRIPT_DIR}/config.env" ]]; then
+    source "${SCRIPT_DIR}/config.env"
   else
     echo "Warning: config.env file not found." >&2
   fi
 
-  bash ${MYINIT}/mkrepo.sh
-else
-  repos=$(get_repositories "${GITHUB_ACCESS_TOKEN}")
-    if [[ -z "$repos" ]]; then
-    echo "No repositories found." >&2
-    exit 0
-  fi
-  repo_array=()
-  while IFS= read -r line; do
-    repo_array+=("$line")
-  done <<< "$repos"
+  # Ensure required commands exist
+  for cmd in bws bw jq curl git; do
+    if ! command -v "$cmd" &>/dev/null; then
+      fail 1 "Error: $cmd command not found."
+    fi
+  done
 
-  chosen_repo=$(choose "${repo_array[@]}")
-  helper_script="${HOME}/.config/git-credential-env"
-  git -c credential.helper="$helper_script" clone "https://github.com/${chosen_repo}.git"
-  cd "${chosen_repo#*/}" || exit 1
-  # Configure git to use the credential manager.
-  case "$OSTYPE" in
-    darwin*) git config credential.helper osxkeychain ;;
-    linux*)  git config credential.helper "$helper_script" ;;
-    msys*|cygwin*) git config credential.helper manager ;;
-    *) echo "Unsupported OS for credential helper config." ;;
-  esac
-  
-  git config "remote.origin.url" "https://github.com/${chosen_repo}.git"
+  ensure_logged_in() {
+    local status
+    status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null)
+    if [[ "$status" == "unauthenticated" || -z "$status" ]]; then
+      echo "🔑 Logging in to Bitwarden CLI using API key..."
+      bw login --apikey >/dev/null
+      unset BW_SESSION
+      ensure_session
+    fi
+  }
+
+  ensure_session() {
+    if [[ -n "${BW_SESSION:-}" ]]; then
+      echo "✅ Vault is already unlocked."
+      return 0
+    fi
+
+    echo "🔐 Unlocking Bitwarden vault... please enter your master password:"
+    export BW_SESSION=$(bw unlock --raw)
+    if [[ $? -ne 0 ]]; then
+      echo "❌ Unlock failed. Please check your password." >&2
+      unset BW_SESSION
+      return 1
+    fi
+    echo "✅ Vault unlocked successfully. Session key is now in your environment."
+  }
+
+  # Retrieve BWS access token if missing
+  if [[ -z "${BWS_ACCESS_TOKEN:-}" ]]; then
+    if ! ensure_session; then
+      fail 1 "Failed to unlock Bitwarden vault"
+    fi
+    echo "=> Retrieving BWS access token from Bitwarden..."
+    BWS_ACCESS_TOKEN=$(bw get password "$BWS_ACCESS_TOKEN_ID" --session "$BW_SESSION" 2>/dev/null)
+    if [[ -z "$BWS_ACCESS_TOKEN" ]]; then
+      fail 1 "Failed to retrieve BWS access token"
+    fi
+    export BWS_ACCESS_TOKEN
+  fi
+
+  secret_data=$(bws secret get "$BW_API_KEY_ID" -o json 2>/dev/null)
+  if [[ $? -ne 0 || -z "$secret_data" ]]; then
+    fail 1 "Failed to retrieve secret with ID '$BW_API_KEY_ID'"
+  fi
+
+  BW_CLIENTSECRET=$(echo "$secret_data" | jq -r '.value')
+  if [[ -z "$BW_CLIENTSECRET" ]]; then
+    fail 1 "Could not extract client_secret from the secret data"
+  fi
+
+  ensure_logged_in
+  export BW_CLIENTID BW_CLIENTSECRET
+
+  # Fetch GitHub token using Bitwarden Secrets Manager
+  if [[ "$OSTYPE" == "darwin"* || "$OSTYPE" == "linux-gnu"* ]]; then
+    if ! pass=$(bws secret get "$GH_TOKEN_ID" -o json | jq -r '.value' 2>/dev/null); then
+      fail 1 "Failed to retrieve GitHub access token"
+    fi
+  elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
+    fail 4 "Windows not yet supported"
+  else
+    fail 5 "Unsupported OS"
+  fi
+
+  gitusername=$(git config --global user.github.login.name || true)
+  if [[ -z "$gitusername" ]]; then
+    read -p "Enter your GitHub username: " gitusername
+    git config --global user.github.login.name "$gitusername"
+  fi
+
+  email=$(git config --global user.email "$gitusername"@users.noreply.github.com)
+
+  name=$(git config --global user.name || true)
+  if [[ -z "$name" ]]; then
+    read -p "Enter your Full Name: " name
+    git config --global user.name "$name"
+  fi
+
+  export GITHUB_ACCESS_TOKEN="$pass"
+  if [[ -z "$GITHUB_ACCESS_TOKEN" ]]; then
+    fail 6 "GitHub Access Token not set"
+  fi
+
+  echo ""
+  echo "What would you like to do?"
+  choose "Create a new repository" "Clone an existing repository"
+
+  if [[ $choice -eq 0 ]]; then
+    # Check if we're inside a git repository
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      echo "Script is running from within a git repository.  Further cloning is not recommended."
+      echo "Please run this script from outside of a git repository."
+      fail 1
+    elif [[ -z "$SCRIPT_DIR" || "$SCRIPT_DIR" == "." ]]; then
+      git clone https://github.com/$gitusername/${MYINIT}
+    else
+      if [[ ! -d "$MYINIT" ]]; then
+        git clone https://github.com/$gitusername/${MYINIT} "$MYINIT"
+      fi
+    fi
+
+    bash ${MYINIT}/mkrepo.sh
+  else
+    repos=$(get_repositories "${GITHUB_ACCESS_TOKEN}")
+    if [[ -z "$repos" ]]; then
+      echo "No repositories found." >&2
+      safe_exit 0
+    fi
+    repo_array=()
+    while IFS= read -r line; do
+      repo_array+=("$line")
+    done <<< "$repos"
+
+    chosen_repo=$(choose "${repo_array[@]}")
+    helper_script="${HOME}/.config/git-credential-env"
+    git -c credential.helper="$helper_script" clone "https://github.com/${chosen_repo}.git"
+    cd "${chosen_repo#*/}" || fail 1
+    case "$OSTYPE" in
+      darwin*) git config credential.helper osxkeychain ;;
+      linux*)  git config credential.helper "$helper_script" ;;
+      msys*|cygwin*) git config credential.helper manager ;;
+      *) echo "Unsupported OS for credential helper config." ;;
+    esac
+
+    git config "remote.origin.url" "https://github.com/${chosen_repo}.git"
+  fi
+
+  unset IFS
+
+  if (( sourced )); then
+    eval "$saved_opts"
+  fi
+}
+
+if (( sourced )); then
+  main "$@" || return $?
+else
+  main "$@"
 fi
 
-unset IFS
