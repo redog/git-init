@@ -30,6 +30,8 @@ bash <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/init.sh)
 
 or
 
-./bw-key-init.sh 
+# Source the key initialization script so that environment variables such as
+# `BW_SESSION` are exported to your current shell.
+source ./bw-key-init.sh
 ./bws-key-init.sh
 ./init.sh
