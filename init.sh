@@ -125,13 +125,13 @@ else
   done <<< "$repos"
 
   chosen_repo=$(choose "${repo_array[@]}")
-  # FIX: Use the access token in the clone URL to prevent password prompts for private repos.
-  git clone "https://x-access-token:${GITHUB_ACCESS_TOKEN}@github.com/${chosen_repo}.git"
+  helper_script="${HOME}/.config/git-credential-env"
+  git -c credential.helper="$helper_script" clone "https://github.com/${chosen_repo}.git"
   cd "${chosen_repo#*/}" || exit 1
   # Configure git to use the credential manager.
   case "$OSTYPE" in
     darwin*) git config credential.helper osxkeychain ;;
-    linux*)  git config credential.helper ${HOME}/.config/git-credential-env ;;
+    linux*)  git config credential.helper "$helper_script" ;;
     msys*|cygwin*) git config credential.helper manager ;;
     *) echo "Unsupported OS for credential helper config." ;;
   esac

@@ -301,12 +301,12 @@ def action_clone_repository(token: str):
     clone_url = f"https://github.com/{chosen_repo_full_name}.git" # Use standard HTTPS
 
     try:
-        # Clone using standard HTTPS, rely on credential helper
-        run_command(['git', 'clone', clone_url, repo_name])
+        # Clone using standard HTTPS, rely on credential helper script
+        helper_script = str(Path.home() / '.config/git-credential-env')
+        run_command(['git', '-c', f'credential.helper={helper_script}', 'clone', clone_url, repo_name])
 
-        # Configure credential helper locally for this repo (optional, but matches original)
-        # Git Credential Manager (recommended) or cache
-        helper_to_set = 'manager' if platform.system() == 'Windows' else "cache --timeout=3600"
+        # Configure credential helper locally for this repo
+        helper_to_set = 'manager' if platform.system() == 'Windows' else f'!{helper_script}'
         print(f"Configuring local credential.helper to '{helper_to_set}'...")
         run_command(['git', 'config', '--local', 'credential.helper', helper_to_set], cwd=repo_path)
 
@@ -386,9 +386,10 @@ def action_create_repository(token: str, username_from_config: Optional[str]):
 
         # --- Configure Git Globally (if not set) ---
         if 'credential.helper' not in global_config:
-            helper = 'manager' if platform.system() == 'Windows' else 'cache --timeout=3600'
+            script_path = str(Path.home() / '.config/git-credential-env')
+            helper = 'manager' if platform.system() == 'Windows' else f'!{script_path}'
             print(f"Setting global credential.helper to '{helper}'...")
-            run_command(['git', 'config', '--global', 'credential.helper', helper], check=False) # Don't fail if this errors
+            run_command(['git', 'config', '--global', 'credential.helper', helper], check=False)  # Don't fail if this errors
 
         if 'push.default' not in global_config:
             print("Setting global push.default to 'simple'...")
