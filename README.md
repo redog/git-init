@@ -26,6 +26,12 @@ bash <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/init.sh)
 source ./init.sh
 ```
 
+### One-liner to source from GitHub
+
+```bash
+source <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/init.sh)
+```
+
 The script will automatically log in to Bitwarden using your API key (if available) before unlocking the vault, so no manual `bw login` step is required.
 
 ## Configuration
@@ -38,8 +44,10 @@ version.
  
 ### Git Credential Helper
 
-Use the provided `git-credential-env` script to supply your GitHub token at runtime
-without storing it in git config:
+`init.sh` will automatically create the `git-credential-env` helper in
+`~/.config` when it isn't found, so you generally don't need to copy it
+manually. The helper supplies your GitHub token at runtime without
+storing it in git config. To set it up yourself:
 
 ```bash
 mkdir -p ~/.config
