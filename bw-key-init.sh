@@ -39,6 +39,19 @@ if ! command -v jq &> /dev/null; then
   fail 1
 fi
 
+# Function to ensure bw is logged in using the API key
+ensure_logged_in() {
+  local status
+  status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null)
+  if [[ "$status" == "unauthenticated" || -z "$status" ]]; then
+    echo "🔑 Logging in to Bitwarden CLI using API key..."
+    bw login --apikey --clientid "$BW_CLIENT_ID" --clientsecret "$BW_CLIENT_SECRET" >/dev/null
+    # Need to unlock again after logging in
+    unset BW_SESSION
+    ensure_session
+  fi
+}
+
 # Function to ensure BW_SESSION is set and unlocked
 ensure_session() {
   if [ -n "$BW_SESSION" ]; then
@@ -61,12 +74,11 @@ ensure_session() {
   fi
 }
 
-if ! ensure_session; then
-  fail 1
-fi
-
-# If BWS_ACCESS_TOKEN isn't set, try retrieving it using bw
+# Unlock vault if needed to retrieve required secrets
 if [[ -z "$BWS_ACCESS_TOKEN" ]]; then
+  if ! ensure_session; then
+    fail 1
+  fi
   echo "=> Retrieving BWS access token from Bitwarden..."
   BWS_ACCESS_TOKEN=$(bw get password "$BWS_ACCESS_TOKEN_ID" --session "$BW_SESSION" 2>/dev/null)
   if [[ -z "$BWS_ACCESS_TOKEN" ]]; then
@@ -99,3 +111,8 @@ if [ -z "$BW_CLIENT_SECRET" ]; then
   fail 1
 fi
 export BW_CLIENT_ID BW_CLIENT_SECRET
+
+# Ensure we're logged in with the API key for future sessions
+ensure_logged_in
+# Finally ensure the vault is unlocked for this session
+ensure_session
