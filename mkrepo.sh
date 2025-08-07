@@ -36,13 +36,6 @@ if [[ -z "$username" ]]; then
   done
 fi
 
-# Repository name
-while true; do
-  read -rp "Enter a unique name for the new repo: " repo
-  [[ -n "$repo" ]] && break
-  echo "Repo name cannot be empty. Please try again." >&2
-done
-
 # GitHub token from environment
 if [[ -z "${GITHUB_ACCESS_TOKEN:-}" ]]; then
   echo "The GITHUB_ACCESS_TOKEN environment variable is not set." >&2
@@ -50,21 +43,34 @@ if [[ -z "${GITHUB_ACCESS_TOKEN:-}" ]]; then
 fi
 token="$GITHUB_ACCESS_TOKEN"
 
-# Create repository via GitHub API
-api_url="https://api.github.com/user/repos"
-post_data=$(printf '{"name":"%s","description":"Created with the GitHub API","private":true}' "$repo")
-response=$(curl -fsSL -w "%{http_code}" -H "Authorization: token $token" \
-  -H "Accept: application/vnd.github.v3+json" \
-  -d "$post_data" "$api_url")
-status="${response: -3}"
-body="${response::-3}"
-if [[ "$status" != "201" ]]; then
-  echo "Failed to create repository: HTTP $status" >&2
-  [[ -n "$body" ]] && echo "$body" >&2
-  exit 1
-fi
+# Loop to get a unique repository name and create it
+while true; do
+  read -rp "Enter a unique name for the new repo: " repo
+  if [[ -z "$repo" ]]; then
+    echo "Repo name cannot be empty. Please try again." >&2
+    continue
+  fi
 
-echo "Successfully created repository \"$repo\""
+  # Create repository via GitHub API
+  api_url="https://api.github.com/user/repos"
+  post_data=$(printf '{"name":"%s","description":"Created with the GitHub API","private":true}' "$repo")
+  response=$(curl -sSL -w "%{http_code}" -H "Authorization: token $token" \
+    -H "Accept: application/vnd.github.v3+json" \
+    -d "$post_data" "$api_url")
+  status="${response: -3}"
+  body="${response::-3}"
+
+  if [[ "$status" == "201" ]]; then
+    echo "Successfully created repository \"$repo\""
+    break # Exit loop on success
+  elif [[ "$status" == "422" ]]; then
+    echo "Repository name '$repo' is already taken. Please choose another one." >&2
+  else
+    echo "Failed to create repository: HTTP $status" >&2
+    [[ -n "$body" ]] && echo "$body" >&2
+    exit 1
+  fi
+done
 
 # === Local repository setup ===
 if [[ -d "$repo" ]]; then
