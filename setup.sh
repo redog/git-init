@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Determine if the script was sourced or executed
+sourced=0
+[[ ${BASH_SOURCE[0]} != "$0" ]] && sourced=1
+
+# Exit or return based on invocation
+safe_exit() {
+  local code=${1:-0}
+  if (( sourced )); then
+    return "$code"
+  else
+    exit "$code"
+  fi
+}
+
 install_prerequisite() {
   local pkg="$1"
   if ! command -v "$pkg" >/dev/null 2>&1; then
@@ -47,21 +61,58 @@ install_bw() {
     echo "bw is already installed."
     return
   fi
-  local BW_VERSION="2025.7.0"
-  local zip_suffix=""
+
   if [[ "$arch" == "arm64" ]]; then
-    zip_suffix="-${arch}"
+    echo "A pre-built binary for the Bitwarden CLI is not available for your architecture (aarch64)."
+    echo "You can build it from source. Please follow these instructions:"
+
+    if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+      echo
+      echo "1. Install Node.js and npm. You can find instructions here: https://nodejs.org/"
+      echo "   After installation, please re-run this script."
+      safe_exit 1
+    fi
+
+    echo
+    echo "1. Clone the Bitwarden clients repository:"
+    echo "   git clone https://github.com/bitwarden/clients.git"
+    echo
+    echo "2. Navigate into the repository and install dependencies:"
+    echo "   cd clients"
+    echo "   npm ci"
+    echo
+    echo "3. Build the CLI:"
+    echo "   cd apps/cli"
+    echo "   npm run build:oss"
+    echo
+    echo "4. The CLI will be built to 'build/bw.js'. To make it executable from anywhere,"
+    echo "   create a wrapper script named 'bw' in your personal bin directory:"
+    echo "   (e.g., ~/.local/bin/bw)"
+    echo
+    echo "   Here is the content for the wrapper script. Replace '/path/to/your' with the actual path to the cloned 'clients' repository:"
+    echo
+    echo '   #!/bin/sh'
+    echo '   node /path/to/your/clients/apps/cli/build/bw.js "$@"'
+    echo
+    echo "5. Make the wrapper script executable:"
+    echo "   chmod +x ~/.local/bin/bw"
+    echo
+    echo "After completing these steps, you can verify the installation by running 'bw --version'."
+    echo
+    return
+  else # amd64
+    local BW_VERSION="2025.7.0"
+    local DOWNLOAD_URL="https://github.com/bitwarden/clients/releases/download/cli-v${BW_VERSION}/bw-linux-2025.7.0.zip"
+    local INSTALL_DIR="${HOME}/.local/bin"
+    mkdir -p "$INSTALL_DIR"
+    echo "Downloading bw ${BW_VERSION}..."
+    curl -L "$DOWNLOAD_URL" -o /tmp/bw.zip
+    unzip -o /tmp/bw.zip -d /tmp/bw-temp
+    mv /tmp/bw-temp/bw "$INSTALL_DIR/"
+    chmod +x "$INSTALL_DIR/bw"
+    rm -rf /tmp/bw.zip /tmp/bw-temp
+    echo "bw installed to $INSTALL_DIR/bw"
   fi
-  local DOWNLOAD_URL="https://github.com/bitwarden/clients/releases/download/cli-v${BW_VERSION}/bw-linux${zip_suffix}-${BW_VERSION}.zip"
-  local INSTALL_DIR="${HOME}/.local/bin"
-  mkdir -p "$INSTALL_DIR"
-  echo "Downloading bw ${BW_VERSION}..."
-  curl -L "$DOWNLOAD_URL" -o /tmp/bw.zip
-  unzip -o /tmp/bw.zip -d /tmp/bw-temp
-  mv /tmp/bw-temp/bw "$INSTALL_DIR/"
-  chmod +x "$INSTALL_DIR/bw"
-  rm -rf /tmp/bw.zip /tmp/bw-temp
-  echo "bw installed to $INSTALL_DIR/bw"
 }
 
 install_bws() {
@@ -110,7 +161,7 @@ main() {
       ;;
     *)
       echo "Unsupported architecture: $(uname -m)"
-      exit 1
+      safe_exit 1
       ;;
   esac
 
