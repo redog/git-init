@@ -111,6 +111,11 @@ token, and then offers to create a new repository or clone an existing one. It
 mirrors the original Bash workflow while relying entirely on PowerShell cmdlets
 (`Invoke-RestMethod`, `Invoke-WebRequest`, `ConvertFrom-Json`, etc.).
 
+When creating a repository, the script now prompts for the branch name to
+publish and defaults to `feature/powershell-port`. After seeding the repository
+with an initial commit, it pushes that branch to GitHub so the work is
+available as a feature branch immediately.
+
 ### Bash (legacy)
 
 The historical Bash workflow is still present for compatibility. Source

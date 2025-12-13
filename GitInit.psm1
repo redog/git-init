@@ -454,7 +454,9 @@ function Initialize-GitRepository {
         [Parameter(Mandatory)]
         [string]$Name,
         [Parameter(Mandatory)]
-        [hashtable]$Profile
+        [hashtable]$Profile,
+        [string]$BranchName = 'main',
+        [switch]$Publish
     )
 
     $repoPath = Join-Path -Path (Get-Location) -ChildPath $Name
@@ -471,6 +473,10 @@ function Initialize-GitRepository {
         Invoke-Git -Arguments @('config', 'user.name', $Profile.Name) | Out-Null
         Invoke-Git -Arguments @('config', 'user.email', $Profile.Email) | Out-Null
         Invoke-Git -Arguments @('config', 'user.github.login.name', $Profile.Username) | Out-Null
+
+        if (-not $BranchName) {
+            throw 'Branch name cannot be empty.'
+        }
 
         $pushDefault = Get-GitConfigValue -Arguments @('config', '--global', 'push.default')
         if (-not $pushDefault) {
@@ -489,8 +495,11 @@ function Initialize-GitRepository {
 
         Invoke-Git -Arguments @('add', '.') | Out-Null
         Invoke-Git -Arguments @('commit', '-m', 'Initial commit') | Out-Null
-        Invoke-Git -Arguments @('branch', '-M', 'main') | Out-Null
-        Invoke-Git -Arguments @('push', '--set-upstream', 'origin', 'main') | Out-Null
+        Invoke-Git -Arguments @('branch', '-M', $BranchName) | Out-Null
+
+        if ($Publish) {
+            Invoke-Git -Arguments @('push', '--set-upstream', 'origin', $BranchName) | Out-Null
+        }
     } finally {
         Pop-Location
     }
@@ -555,9 +564,14 @@ function Start-GitInit {
                     Write-Warning 'Repository name cannot be empty.'
                     continue
                 }
+                $defaultBranch = 'feature/powershell-port'
+                $branchInput = Read-Host "Enter the branch name to publish [$defaultBranch]"
+                if (-not $branchInput) {
+                    $branchInput = $defaultBranch
+                }
                 try {
                     New-GitHubRepository -Name $name -Token $token
-                    Initialize-GitRepository -Name $name -Profile $profile
+                    Initialize-GitRepository -Name $name -Profile $profile -BranchName $branchInput -Publish
                     break
                 } catch [System.InvalidOperationException] {
                     Write-Warning $_.Exception.Message
