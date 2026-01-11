@@ -16,7 +16,10 @@ Ensure you have the following installed and available in your PATH:
 *   **PowerShell** (pwsh)
 *   **Git**
 *   **Bitwarden CLI** (`bw`)
+*       winget install Bitwarden.CLI
 *   **Bitwarden Secrets Manager** (`bws`)
+*       winget install Microsoft.VCRedist.2015+.x64
+*       ./MInstall-BWS.ps1
 
 ## Getting Started
 
