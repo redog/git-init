@@ -14,7 +14,9 @@ It streamlines the process of:
 Ensure you have the following installed and available in your PATH:
 
 *   **PowerShell** (pwsh)
+*       winget install pwsh
 *   **Git**
+*       winget install Git.Git
 *   **Bitwarden CLI** (`bw`)
 *       winget install Bitwarden.CLI
 *   **Bitwarden Secrets Manager** (`bws`)
