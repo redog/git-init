@@ -5,6 +5,6 @@
     Author            = 'Eric Ortego'
     Description       = 'Loads API keys from Bitwarden Secrets Manager into environment variables.'
     PowerShellVersion = '7.0'
-    FunctionsToExport = @('Get-BwsSecretValue','Get-ApiKeyMap','Set-AllApiKeys')
+    FunctionsToExport = @('Get-BwsSecretValue','Get-ApiKeyMap','Set-AllApiKeys','Set-ApiKeysConfig','Import-ApiKeysConfig')
     AliasesToExport   = @('load_keys')
 }

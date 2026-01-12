@@ -18,27 +18,69 @@ $script:BwsTokenItem = 'Bitwarden Secrets Manager Service Account'
 #   Values:
 #     * '$secret' => replaced with retrieved secret
 #     * literal   => set as-is
-$script:KeyMap = @(
-    @{ Name='Mistral'    ; SecretId='f9e077a8-86e0-43d8-8fe0-b2b500f258ea' ; Env=@{ MISTRAL_API_KEY      = '$secret' } }
-    @{ Name='Claude'     ; SecretId='3d9cd15a-fb36-4c99-90be-b2a8010f4709' ; Env=@{ CLAUDE_API_KEY       = '$secret' } }
-    @{ Name='Gemini'     ; SecretId='6f8bdc68-6802-474f-bde5-b1690043038f' ; Env=@{ GEMINI_API_KEY       = '$secret' } }
-    @{ Name='Groq'       ; SecretId='437f8d17-a314-46db-b043-b18e0110bde1' ; Env=@{ GROQ_API_KEY         = '$secret' } }
-    @{ Name='Tavily'     ; SecretId='c8b5ce6a-5b35-403f-ad86-b2c70149f052' ; Env=@{ TAVILY_API_KEY       = '$secret' } }
+$script:KeyMap = @()
 
-    # LangSmith: one secret -> multiple env vars + tracing flag
-    @{ Name='LangSmith'  ; SecretId='ad3f662b-9c78-4d22-9e15-b2c70147eabc' ; Env=@{
-        LANGCHAIN_TRACING_V2 = 'true'
-        LANGCHAIN_API_KEY    = '$secret'
-        LANGSMITH_API_KEY    = '$secret'
-    } }
+function Set-ApiKeysConfig {
+    <#
+    .SYNOPSIS
+        Sets the configuration for the API Keys module.
+    .DESCRIPTION
+        Allows customization of the BWS CLI path, the BWS Token item name, and the Key Map.
+    .PARAMETER BwsCliPath
+        Path to the Bitwarden Secrets Manager CLI executable (default: 'bws').
+    .PARAMETER BwsTokenItem
+        The name or ID of the item in Bitwarden that contains the BWS access token.
+    .PARAMETER KeyMap
+        An array of hashtables defining the mapping between secret IDs and environment variables.
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$BwsCliPath,
+        [string]$BwsTokenItem,
+        [object[]]$KeyMap
+    )
 
-    @{ Name='Notion'     ; SecretId='7909c25f-f3d3-44ea-8b86-aff8010d5ce9' ; Env=@{ NOTION_API_TOKEN     = '$secret' } }
-    @{ Name='OpenAI'     ; SecretId='fbe0690e-fb43-4e91-b49c-b0b50039847a' ; Env=@{ OPENAI_API_KEY       = '$secret' } }
-    @{ Name='GitHub'     ; SecretId='857d0c2c-cfe0-4e6d-995c-b1690020f8fb' ; Env=@{ GITHUB_ACCESS_TOKEN  = '$secret' } }
-    @{ Name='Cloudflare' ; SecretId='c912c706-c8a3-4928-afa3-b064003857f6' ; Env=@{ CF_ACCESS_TOKEN      = '$secret' } }
-    @{ Name='Fernet'     ; SecretId='d16db1df-6bcf-4f90-a341-b0640187c855' ; Env=@{ FN_ENC_KEY           = '$secret' } }
-    @{ Name='Vault'      ; SecretId='42e1e10a-8ea9-427c-9c9e-b070013edb70' ; Env=@{ VAULT_PASSWORD       = '$secret' } }
-)
+    if ($PSBoundParameters.ContainsKey('BwsCliPath')) {
+        $script:BwsCliPath = $BwsCliPath
+    }
+    if ($PSBoundParameters.ContainsKey('BwsTokenItem')) {
+        $script:BwsTokenItem = $BwsTokenItem
+    }
+    if ($PSBoundParameters.ContainsKey('KeyMap')) {
+        $script:KeyMap = $KeyMap
+    }
+}
+
+function Import-ApiKeysConfig {
+    <#
+    .SYNOPSIS
+        Imports configuration from a .psd1 file.
+    .DESCRIPTION
+        Reads a PowerShell data file (.psd1) containing a hashtable with keys 'BwsCliPath', 'BwsTokenItem', and 'KeyMap',
+        and applies them using Set-ApiKeysConfig.
+    .PARAMETER Path
+        Path to the .psd1 configuration file.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    if (-not (Test-Path $Path)) {
+        throw "Configuration file not found: $Path"
+    }
+
+    $config = Import-PowerShellDataFile -Path $Path
+
+    $params = @{}
+    if ($config.ContainsKey('BwsCliPath')) { $params['BwsCliPath'] = $config.BwsCliPath }
+    if ($config.ContainsKey('BwsTokenItem')) { $params['BwsTokenItem'] = $config.BwsTokenItem }
+    if ($config.ContainsKey('KeyMap')) { $params['KeyMap'] = $config.KeyMap }
+
+    Set-ApiKeysConfig @params
+}
+
 # endregion
 
 # region: bitwarden bootstrap
@@ -192,6 +234,11 @@ function Set-AllApiKeys {
 
     $entries = $script:KeyMap
 
+    if ($null -eq $entries -or $entries.Count -eq 0) {
+        Write-Warning "KeyMap is empty. Please configure the module using Set-ApiKeysConfig or Import-ApiKeysConfig."
+        return [pscustomobject]@{ Success = 0; Failed = 0; Total = 0 }
+    }
+
     if ($Only) {
         $onlySet = [System.Collections.Generic.HashSet[string]]::new([string[]]$Only, [System.StringComparer]::OrdinalIgnoreCase)
         $entries = $entries | Where-Object {
@@ -242,4 +289,4 @@ function Clear-ApiKeyEnv {
 
 Set-Alias -Name load_keys -Value Set-AllApiKeys
 
-Export-ModuleMember -Function Get-BwsSecretValue, Get-ApiKeyMap, Set-AllApiKeys, Clear-ApiKeyEnv -Alias load_keys
+Export-ModuleMember -Function Get-BwsSecretValue, Get-ApiKeyMap, Set-AllApiKeys, Clear-ApiKeyEnv, Set-ApiKeysConfig, Import-ApiKeysConfig -Alias load_keys
