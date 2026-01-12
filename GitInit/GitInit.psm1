@@ -15,7 +15,6 @@ function Get-GitHubAuthHeader {
         Accept        = "application/vnd.github.v3+json"
     }
 }
-
 function Initialize-LocalGitRepository {
     <#
     .SYNOPSIS
@@ -81,8 +80,6 @@ function Get-GHRepositories {
         return $null
     }
 }
-
-
  function New-GHRepository {
     <#
     .SYNOPSIS

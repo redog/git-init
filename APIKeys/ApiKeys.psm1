@@ -286,6 +286,8 @@ function Clear-ApiKeyEnv {
 }
 # endregion
 
+Import-ApiKeysConfig .\APIKeys\config.psd1
+
 Set-Alias -Name load_keys -Value Set-AllApiKeys
 
 Export-ModuleMember -Function Get-BwsSecretValue, Get-ApiKeyMap, Set-AllApiKeys, Clear-ApiKeyEnv, Set-ApiKeysConfig, Import-ApiKeysConfig -Alias load_keys
