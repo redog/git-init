@@ -84,7 +84,7 @@ function Import-ApiKeysConfig {
 # endregion
 
 # region: bitwarden bootstrap
-function Ensure-BwSession {
+function Get-BwSessionEnv {
     [CmdletBinding()]
     param()
 
@@ -114,15 +114,14 @@ function Ensure-BwSession {
     }
 }
 
-function Ensure-BwsAccessToken {
+function Get-BwsAccessToken {
     [CmdletBinding()]
     param(
         [string]$BwsTokenItemIdOrName = $script:BwsTokenItem
     )
 
     if (-not $env:BWS_ACCESS_TOKEN) {
-        Ensure-BwSession
-
+        Get-BwSessionEnv
         $item = bw get item $BwsTokenItemIdOrName | ConvertFrom-Json
 
         $token = $null
@@ -230,7 +229,7 @@ function Set-AllApiKeys {
     )
 
     # Bootstrap bws token from bw (prompts if bw is locked)
-    Ensure-BwsAccessToken
+    Get-BwsAccessToken
 
     $entries = $script:KeyMap
 

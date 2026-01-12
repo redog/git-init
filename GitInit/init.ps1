@@ -1,5 +1,3 @@
-#requires -Commands bw, bws, git
-
 # Main entry point for the Git-Init script
 # This script will dot-source the module and execute the main logic.
 
