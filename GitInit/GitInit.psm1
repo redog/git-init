@@ -1,103 +1,18 @@
 # PowerShell module for Git-Init functionality
-# This module contains functions for interacting with Bitwarden and GitHub.
+# This module contains functions for interacting with GitHub.
 Set-StrictMode -Version Latest
 
-function Ensure-BWSession {
-    <#
-    .SYNOPSIS
-    Ensures the user is logged in to Bitwarden and the vault is unlocked.
-    #>
+function Get-GitHubAuthHeader {
     [CmdletBinding()]
     param()
 
-    try {
-        $status = bw status | ConvertFrom-Json
-    }
-    catch {
-        # bw command not found or other error
-        Write-Error "Bitwarden CLI (bw) does not appear to be installed or is not in your PATH."
-        return
+    if ([string]::IsNullOrWhiteSpace($env:GITHUB_ACCESS_TOKEN)) {
+        throw "GITHUB_ACCESS_TOKEN is not set. Run 'load_keys' or set the env var."
     }
 
-    if ($status.status -eq 'unauthenticated') {
-        Write-Host "Logging in to Bitwarden..."
-        if ($env:BW_CLIENTID -and $env:BW_CLIENTSECRET) {
-            $env:BW_CLIENTSECRET | bw login --apikey --stdin
-        }
-        else {
-            bw login
-        }
-        $status = bw status | ConvertFrom-Json
-        if ($status.status -eq 'unauthenticated') {
-            Write-Error "Bitwarden login failed."
-            return
-        }
-    }
-
-    if ($status.status -eq 'locked') {
-        Write-Host "Unlocking Bitwarden vault..."
-        $sessionKey = bw unlock --raw
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error "Failed to unlock Bitwarden vault."
-            return
-        }
-        $env:BW_SESSION = $sessionKey
-        Write-Host "Vault unlocked."
-    }
-    else {
-        Write-Host "Bitwarden vault is already unlocked."
-    }
-}
-
-function Get-SecretValue {
-    <#
-    .SYNOPSIS
-    Retrieves a secret value from Bitwarden Secrets Manager.
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$SecretId
-    )
-
-    try {
-        $secret = bws secret get $SecretId --raw | ConvertFrom-Json
-        return $secret.value
-    }
-    catch {
-        Write-Error "Failed to retrieve secret with ID '$SecretId'. Error: $_"
-        return $null
-    }
-}
-
-function Set-GitCredentialHelper {
-    <#
-    .SYNOPSIS
-    Configures the Git credential helper based on the OS.
-    #>
-    [CmdletBinding()]
-    param()
-
-    if ($isWindows) {
-        git config --global credential.helper manager
-    }
-    elseif ($isMac) {
-        git config --global credential.helper osxkeychain
-    }
-    elseif ($isLinux) {
-        $helperPath = Join-Path $HOME ".config/git-credential-env"
-        if (-not (Test-Path $helperPath)) {
-            $helperContent = "#!/usr/bin/env pwsh`n"
-            $helperContent += "`$token = Get-SecretValue -SecretId `$env:GH_TOKEN_ID`n"
-            $helperContent += "if (`$token) {`n"
-            $helperContent += "    echo `"username=x-access-token`"`n"
-            $helperContent += "    echo `"password=`$token`"`n"
-            $helperContent += "}"
-            New-Item -Path $helperPath -ItemType File -Value $helperContent -Force
-            # This is not cross-platform, but the script is intended for Linux in this case
-            /bin/bash -c "chmod +x $helperPath"
-        }
-        git config --global credential.helper $helperPath
+    return @{
+        Authorization = "Bearer $($env:GITHUB_ACCESS_TOKEN)"
+        Accept        = "application/vnd.github.v3+json"
     }
 }
 
@@ -144,24 +59,21 @@ function Initialize-LocalGitRepository {
     git branch -M main
     git push --set-upstream origin main
 }
-
 function Get-GHRepositories {
     <#
     .SYNOPSIS
     Fetches a list of repositories for the authenticated user.
     #>
     [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$Token
-    )
+    param()
 
-    $headers = @{
-        "Authorization" = "token $Token"
-    }
+    $headers = Get-GitHubAuthHeader
 
     try {
-        $response = Invoke-RestMethod -Uri "https://api.github.com/user/repos" -Headers $headers
+        $response = Invoke-RestMethod `
+            -Uri "https://api.github.com/user/repos" `
+            -Headers $headers
+
         return $response.full_name
     }
     catch {
@@ -170,24 +82,19 @@ function Get-GHRepositories {
     }
 }
 
-function New-GHRepository {
+
+ function New-GHRepository {
     <#
     .SYNOPSIS
     Creates a new private GitHub repository.
     #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory=$true)]
-        [string]$RepoName,
-
-        [Parameter(Mandatory=$true)]
-        [string]$Token
+        [Parameter(Mandatory)]
+        [string]$RepoName
     )
 
-    $headers = @{
-        "Authorization" = "token $Token"
-        "Accept"        = "application/vnd.github.v3+json"
-    }
+    $headers = Get-GitHubAuthHeader
 
     $body = @{
         name        = $RepoName
@@ -196,16 +103,21 @@ function New-GHRepository {
     } | ConvertTo-Json
 
     try {
-        $response = Invoke-RestMethod -Uri "https://api.github.com/user/repos" -Method Post -Headers $headers -Body $body -ContentType "application/json"
-        return $response
+        Invoke-RestMethod `
+            -Uri "https://api.github.com/user/repos" `
+            -Method Post `
+            -Headers $headers `
+            -Body $body `
+            -ContentType "application/json"
     }
     catch {
-        $errorResponse = $_.ErrorDetails.Message | ConvertFrom-Json
-        if ($errorResponse.errors[0].message -eq 'name already exists on this account') {
-            Write-Warning "Repository name '$RepoName' is already taken."
+        $errorResponse = $_.ErrorDetails.Message | ConvertFrom-Json -ErrorAction SilentlyContinue
+
+        if ($errorResponse?.errors?[0]?.message -eq 'name already exists on this account') {
+            Write-Warning "Repository name '$RepoName' already exists."
         }
         else {
-            Write-Error "Failed to create repository. Error: $($errorResponse.message)"
+            Write-Error "Failed to create repository. Error: $($errorResponse.message ?? $_)"
         }
         return $null
     }
