@@ -1,7 +1,95 @@
-# git-init
+# Git-Init
 
-### One liner to initalizes a github repository and configure it locally. 
-### Requires GitHub API and bitwarden cli API tokens saved in bitwarden secrets manager, and bitwarden secrets manager API token stored in the bitwarden vault. 
+Tools to streamline the initialization and cloning of GitHub repositories, with integrated secret management using Bitwarden.
+
+This repository provides two implementations:
+1.  **[PowerShell Version](#powershell-version-cross-platform)** (New, Cross-platform)
+2.  **[Shell Version](#shell-version-legacy)** (Original, Unix-like)
+
+---
+
+# PowerShell Version (Cross-platform)
+
+A robust PowerShell port suitable for Windows, macOS, and Linux.
+
+## Prerequisites
+
+1.  **PowerShell 7+** (`pwsh`)
+2.  **Git**
+3.  **Bitwarden CLI** (`bw`) - For vault unlocking.
+4.  **Bitwarden Secrets Manager CLI** (`bws`) - For secret retrieval.
+
+### Installing Prerequisites (Windows)
+
+```powershell
+winget install pwsh
+winget install Git.Git
+winget install Bitwarden.CLI
+```
+
+For `bws`, you can use the included helper script:
+```powershell
+./MInstall-BWS.ps1
+```
+
+## Setup
+
+### 1. Configuration
+
+Create a configuration file to tell the tool which secrets to load. You can place this file at `./config.psd1` (in the repo root) or `~/.git-init.ps1`.
+
+**Example `config.psd1`:**
+
+```powershell
+@{
+    # Optional: Path to bws executable if not in PATH
+    # BwsCliPath = 'bws'
+
+    # The item in your vault containing the BWS Access Token
+    BwsTokenItem = 'Bitwarden Secrets Manager Service Account'
+
+    # Map secrets to environment variables
+    KeyMap = @(
+        @{
+            Name     = 'GitHub'
+            SecretId = 'your-secret-uuid-here'
+            Env      = @{ GITHUB_ACCESS_TOKEN = '$secret' }
+        }
+    )
+}
+```
+
+*Note: You must have a secret in Bitwarden Secrets Manager containing your GitHub Personal Access Token, and map it to `GITHUB_ACCESS_TOKEN`.*
+
+### 2. Bitwarden Login
+
+Ensure you are logged into the Bitwarden CLI:
+
+```powershell
+bw login
+```
+
+## Usage
+
+Run the main entry point script:
+
+```powershell
+./init.ps1
+```
+
+The script will:
+1.  Unlock your Bitwarden vault (prompting for master password/PIN if needed) to retrieve the BWS Access Token.
+2.  Use `bws` to fetch your GitHub Token and inject it into the process.
+3.  Present a menu to **Create** or **Clone** a repository.
+
+---
+
+# Shell Version (Legacy)
+
+The original Bash implementation for Unix-like environments.
+
+### One liner to initalizes a github repository and configure it locally.
+### Requires GitHub API and bitwarden cli API tokens saved in bitwarden secrets manager, and bitwarden secrets manager API token stored in the bitwarden vault.
 
 
 ## Prerequisites
@@ -94,8 +182,8 @@ source <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/init.s
 ### Git Credential Helper
 
 `init.sh` will automatically create a `git-credential-env` helper in
-`~/.config` when it isn't found. The helper supplies your GitHub 
-token at runtime without storing it in git config. 
+`~/.config` when it isn't found. The helper supplies your GitHub
+token at runtime without storing it in git config.
 
 The helper expects your token in the `GITHUB_ACCESS_TOKEN` environment variable
 whenever Git needs authentication. Avoid setting `user.github.token` in any git
