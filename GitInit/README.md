@@ -1,63 +1,121 @@
-# GitInit Module
+# GitInit (PowerShell Port)
 
-The **GitInit** module provides PowerShell functions for interacting with GitHub and initializing local Git repositories. It is a core component of the Git-Init tool but can also be imported and used independently.
+This project is a PowerShell port of the GitInit shell scripts. Its primary intent is to provide a cross-platform, idiomatic PowerShell solution for initializing and managing Git repositories with integrated Bitwarden secret management.
 
-## Features
+It streamlines the process of:
+1.  Authenticating with Bitwarden.
+2.  Retrieving GitHub tokens securely.
+3.  Creating new private repositories on GitHub.
+4.  Cloning existing repositories.
+5.  Configuring local Git credentials.
 
-- **GitHub API Integration:** Create private repositories and list existing repositories.
-- **Local Git Setup:** Initialize a repository, set up remote origin, create README/LICENSE, and push the initial commit.
-- **User Info Retrieval:** Fetch authenticated user details from GitHub.
+## Prerequisites
 
-## Usage
+Ensure you have the following installed and available in your PATH:
 
-While primarily used by the root `init.ps1` script, you can import this module to use its functions directly.
+*   **PowerShell** (pwsh)
+*       winget install pwsh
+*   **Git**
+*       winget install Git.Git
+*   **Bitwarden CLI** (`bw`)
+*       winget install Bitwarden.CLI
+*   **Bitwarden Secrets Manager** (`bws`)
+*       winget install Microsoft.VCRedist.2015+.x64
+*       ./MInstall-BWS.ps1
+
+## Getting Started
+
+### 1. Loading keys
+
+*
+
+* **Creating the Secrets in Bitwarden Secrets Manager** (`bws`)
+*   Before configuring the tool:
+        The user must store their actual API key like GitHub's in the Bitwarden Secrets Manager. 
+        The Bitwarden Secrets Manager API key must be stored in the bitwarden vault.
+    Create or retrieve your Github access token.
+        ```text
+        # Our example github access token
+        github_pat_11111111112222222333333
+        ```
+    Create a Bitwarden account and subscribe to the Bitwarden Secrets Manager service. 
+        After logging into the secrets manager for the first time create a company, project, and machine account.
+        Example: contoso, git-init, git-init-apiUser
+        The Secrets Manager CLI can be logged in to using an access token generated for a particular machine account.
+        Once a new machine account is created within a company you can create a bitwarden secrets access token.
+        Do not forget to assign the project and the necessary write permission to the machine account. Only secrets and projects which the machine account has access to may be interacted with using the CLI.
+        
+        ```powershell
+        § bws project list -o table
+        ID                                     Name       Creation Date
+        -----------------------------------------------------------------------
+        02c45a25-d69b-4540-a489-b3d1013ef541   git-init   2026-01-13 19:21:17
+        ```
+    
+    Armed with our new bws access token we can now store our other API tokens in it's secure vault.
+        ```text
+        # Our example bws token
+        eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMzQiLCJzY29wZSI6ImFwaSJ9.RmFrZVNpZ25hdHVyZQ
+        # bash
+        export BWS_ACCESS_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMzQiLCJzY29wZSI6ImFwaSJ9.RmFrZVNpZ25hdHVyZQ"
+        # powershell
+        $env:BWS_ACCESS_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMzQiLCJzY29wZSI6ImFwaSJ9.RmFrZVNpZ25hdHVyZQ"
+ 
+        bws secret create GITHUB_ACCESS_TOKEN github_pat_11111111112222222333333 02c45a25-d69b-4540-a489-b3d1013ef541
+        {
+            "id": "7bac9c86-7954-4f79-b853-b3d1014c6742",
+            "organizationId": "ac1d066a-785b-49fb-a6e0-b3d1013b30f6",
+            "projectId": "02c45a25-d69b-4540-a489-b3d1013ef541",
+            "key": "GITHUB_ACCESS_TOKEN",
+            "value": "github_pat_11111111112222222333333",
+            "note": "",
+            "creationDate": "2026-01-13T20:10:14.603711300Z",
+            "revisionDate": "2026-01-13T20:10:14.603711400Z"
+        }
+        ```
+        
+        ```config.psd1
+        @{
+            KeyMap = @(
+                @{ Name='GitHub'     ; SecretId='7bac9c86-7954-4f79-b853-b3d1014c6742' ; Env=@{ GITHUB_ACCESS_TOKEN  = '$secret' } }
+            )
+        }
+        ```
+
+    # This one allows us to login to the bw CLI without 2FA challenge? I've forgotten...TODO:fix this README 
+    bw web vault -> Settings -> Security -> Keys -> View API Key -> <Enter Master Password> -> View Key
+    This is the key for the `bw` CLI tool
+
+
+### 1. Usage
+
+Run the entry point script from a PowerShell session:
 
 ```powershell
-Import-Module ./GitInit/GitInit.psm1
+Import-Module APIKeys
+Import-Module GitInit
 ```
 
-*Note: The module requires the `GITHUB_ACCESS_TOKEN` environment variable to be set (typically handled by the `APIKeys` module).*
+The init script will:
+1.  Load your configuration.
+2.  Ensure you are logged into Bitwarden (prompting for unlock/login if necessary).
+3.  Retrieve your GitHub token.
+4.  Present a menu to **Create a new repository** or **Clone an existing repository**.
 
-## Functions
+#### Creating a Repository
+*   Prompts for repository name, GitHub username, full name, and email.
+*   Creates a private repository on GitHub.
+*   Initializes a local folder, sets up the remote, creates a README and LICENSE, and pushes the initial commit.
 
-### `New-GHRepository`
+#### Cloning a Repository
+*   Fetches your list of repositories from GitHub.
+*   Allows you to select a repository from a list.
+*   Configures the appropriate Git credential helper for your OS.
+*   Clones the repository.
 
-Creates a new private repository on GitHub.
+## Cross-Platform Support
 
-**Parameters:**
-- `-RepoName`: The name of the repository to create.
-
-```powershell
-New-GHRepository -RepoName "MyNewProject"
-```
-
-### `Get-GHRepositories`
-
-Fetches a list of all repositories for the authenticated user.
-
-```powershell
-$repos = Get-GHRepositories
-```
-
-### `Initialize-LocalGitRepository`
-
-Initializes a local directory as a Git repository, configures user details, and pushes to GitHub.
-
-**Parameters:**
-- `-RepoName`: Name of the directory/repo.
-- `-Username`: GitHub username.
-- `-Name`: User's full name (for git config).
-- `-Email`: User's email (for git config).
-
-```powershell
-Initialize-LocalGitRepository -RepoName "MyNewProject" -Username "octocat" -Name "The Octocat" -Email "octocat@github.com"
-```
-
-### `Get-GHUser`
-
-Retrieves the login username of the authenticated GitHub user.
-
-```powershell
-$user = Get-GHUser
-Write-Host "Logged in as $user"
-```
+This port is designed to work on Windows, macOS, and Linux.
+*   **Windows:** Uses `manager` credential helper.
+*   **macOS:** Uses `osxkeychain` credential helper.
+*   **Linux:** Creates a custom ephemeral credential helper script using the retrieved token.
