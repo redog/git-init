@@ -80,11 +80,21 @@ if ($choice -eq 0) {
 }
 elseif ($choice -eq 1) {
     # Clone existing repo
-    $repositories = Get-GHRepositories
+    $repositories = Get-GHRepositories | Sort-Object
     if ($repositories) {
-        $repoChoices = $repositories | ForEach-Object { New-Object System.Management.Automation.Host.ChoiceDescription -ArgumentList $_ }
-        $repoIndex = $Host.UI.PromptForChoice("Clone Repository", "Select a repository to clone", $repoChoices, 0)
-        $selectedRepo = $repositories[$repoIndex]
+        Write-Host "Select a repository to clone:"
+        for ($i = 0; $i -lt $repositories.Count; $i++) {
+            Write-Host "$($i + 1). $($repositories[$i])"
+        }
+
+        while ($true) {
+            $selection = Read-Host "Enter repository number (1-$($repositories.Count))"
+            if ($selection -match '^\d+$' -and [int]$selection -ge 1 -and [int]$selection -le $repositories.Count) {
+                $selectedRepo = $repositories[[int]$selection - 1]
+                break
+            }
+            Write-Warning "Invalid selection."
+        }
 
         # Set-GitCredentialHelper # TODO: Implement this in GitInit module
         Write-Warning "Credential helper setup is not yet implemented."
