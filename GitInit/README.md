@@ -1,79 +1,63 @@
-# GitInit (PowerShell Port)
+# GitInit Module
 
-This project is a PowerShell port of the GitInit shell scripts. Its primary intent is to provide a cross-platform, idiomatic PowerShell solution for initializing and managing Git repositories with integrated Bitwarden secret management.
+The **GitInit** module provides PowerShell functions for interacting with GitHub and initializing local Git repositories. It is a core component of the Git-Init tool but can also be imported and used independently.
 
-It streamlines the process of:
-1.  Authenticating with Bitwarden.
-2.  Retrieving GitHub tokens securely.
-3.  Creating new private repositories on GitHub.
-4.  Cloning existing repositories.
-5.  Configuring local Git credentials.
+## Features
 
-## Prerequisites
+- **GitHub API Integration:** Create private repositories and list existing repositories.
+- **Local Git Setup:** Initialize a repository, set up remote origin, create README/LICENSE, and push the initial commit.
+- **User Info Retrieval:** Fetch authenticated user details from GitHub.
 
-Ensure you have the following installed and available in your PATH:
+## Usage
 
-*   **PowerShell** (pwsh)
-*       winget install pwsh
-*   **Git**
-*       winget install Git.Git
-*   **Bitwarden CLI** (`bw`)
-*       winget install Bitwarden.CLI
-*   **Bitwarden Secrets Manager** (`bws`)
-*       winget install Microsoft.VCRedist.2015+.x64
-*       ./MInstall-BWS.ps1
-
-## Getting Started
-
-### 1. Configuration
-
-The script relies on a configuration file to locate your secrets. Create a file named `config.psd1` in the `GitInit` directory, or `.git-init.ps1` in your home directory (`~/.git-init.ps1`).
-
-The file should contain a hashtable with your environment variables. At a minimum, you need the `GH_TOKEN_ID` (the ID of the secret in Bitwarden Secrets Manager containing your GitHub Personal Access Token).
-
-**Example `config.psd1`:**
+While primarily used by the root `init.ps1` script, you can import this module to use its functions directly.
 
 ```powershell
-@{
-    # Required: Bitwarden Secrets Manager ID for your GitHub Token
-    GH_TOKEN_ID = "your-secret-uuid-here"
-
-    # Optional: Bitwarden API credentials for automated login
-    # BW_CLIENTID = "client_id_..."
-    # BW_CLIENTSECRET = "client_secret_..."
-}
+Import-Module ./GitInit/GitInit.psm1
 ```
 
-To obtain the `GH_TOKEN_ID`, check the main repository README or use `bws secret list`.
+*Note: The module requires the `GITHUB_ACCESS_TOKEN` environment variable to be set (typically handled by the `APIKeys` module).*
 
-### 2. Usage
+## Functions
 
-Run the entry point script from a PowerShell session:
+### `New-GHRepository`
+
+Creates a new private repository on GitHub.
+
+**Parameters:**
+- `-RepoName`: The name of the repository to create.
 
 ```powershell
-./GitInit/init.ps1
+New-GHRepository -RepoName "MyNewProject"
 ```
 
-The script will:
-1.  Load your configuration.
-2.  Ensure you are logged into Bitwarden (prompting for unlock/login if necessary).
-3.  Retrieve your GitHub token.
-4.  Present a menu to **Create a new repository** or **Clone an existing repository**.
+### `Get-GHRepositories`
 
-#### Creating a Repository
-*   Prompts for repository name, GitHub username, full name, and email.
-*   Creates a private repository on GitHub.
-*   Initializes a local folder, sets up the remote, creates a README and LICENSE, and pushes the initial commit.
+Fetches a list of all repositories for the authenticated user.
 
-#### Cloning a Repository
-*   Fetches your list of repositories from GitHub.
-*   Allows you to select a repository from a list.
-*   Configures the appropriate Git credential helper for your OS.
-*   Clones the repository.
+```powershell
+$repos = Get-GHRepositories
+```
 
-## Cross-Platform Support
+### `Initialize-LocalGitRepository`
 
-This port is designed to work on Windows, macOS, and Linux.
-*   **Windows:** Uses `manager` credential helper.
-*   **macOS:** Uses `osxkeychain` credential helper.
-*   **Linux:** Creates a custom ephemeral credential helper script using the retrieved token.
+Initializes a local directory as a Git repository, configures user details, and pushes to GitHub.
+
+**Parameters:**
+- `-RepoName`: Name of the directory/repo.
+- `-Username`: GitHub username.
+- `-Name`: User's full name (for git config).
+- `-Email`: User's email (for git config).
+
+```powershell
+Initialize-LocalGitRepository -RepoName "MyNewProject" -Username "octocat" -Name "The Octocat" -Email "octocat@github.com"
+```
+
+### `Get-GHUser`
+
+Retrieves the login username of the authenticated GitHub user.
+
+```powershell
+$user = Get-GHUser
+Write-Host "Logged in as $user"
+```
