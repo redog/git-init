@@ -51,23 +51,23 @@ Each entry in `KeyMap` should have:
 
 ## Functions
 
-### `Import-ApiKeysConfig`
+### `Import-APIKeysConfig`
 
 Loads configuration from a `.psd1` file.
 
 ```powershell
-Import-ApiKeysConfig -Path "./config.psd1"
+Import-APIKeysConfig -Path "./config.psd1"
 ```
 
-### `Set-ApiKeysConfig`
+### `Set-APIKeysConfig`
 
 Manually sets the configuration for the module.
 
 ```powershell
-Set-ApiKeysConfig -BwsTokenItem "My BWS Token" -KeyMap $myKeyMap
+Set-APIKeysConfig -BwsTokenItem "My BWS Token" -KeyMap $myKeyMap
 ```
 
-### `Set-AllApiKeys` (Alias: `load_keys`)
+### `Set-AllAPIKeys` (Alias: `load_keys`)
 
 Loads the configured keys into the current session.
 
@@ -77,18 +77,18 @@ Loads the configured keys into the current session.
 
 ```powershell
 # Load all keys
-Set-AllApiKeys
+Set-AllAPIKeys
 
 # Load only GitHub key
-Set-AllApiKeys -Only GitHub
+Set-AllAPIKeys -Only GitHub
 ```
 
-### `Clear-ApiKeyEnv`
+### `Clear-APIKeyEnv`
 
 Removes the environment variables set by the module.
 
 - **`-ClearBitwardenSession`**: Also removes `BW_SESSION` and `BWS_ACCESS_TOKEN`.
 
 ```powershell
-Clear-ApiKeyEnv -ClearBitwardenSession
+Clear-APIKeyEnv -ClearBitwardenSession
 ```

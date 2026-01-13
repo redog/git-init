@@ -1,4 +1,4 @@
-# ApiKeys.psm1
+# APIKeys.psm1
 
 # region: configuration
 # Secrets Manager CLI executable (Bitwarden Secrets Manager)
@@ -20,7 +20,7 @@ $script:BwsTokenItem = 'Bitwarden Secrets Manager Service Account'
 #     * literal   => set as-is
 $script:KeyMap = @()
 
-function Set-ApiKeysConfig {
+function Set-APIKeysConfig {
     <#
     .SYNOPSIS
         Sets the configuration for the API Keys module.
@@ -51,13 +51,13 @@ function Set-ApiKeysConfig {
     }
 }
 
-function Import-ApiKeysConfig {
+function Import-APIKeysConfig {
     <#
     .SYNOPSIS
         Imports configuration from a .psd1 file.
     .DESCRIPTION
         Reads a PowerShell data file (.psd1) containing a hashtable with keys 'BwsCliPath', 'BwsTokenItem', and 'KeyMap',
-        and applies them using Set-ApiKeysConfig.
+        and applies them using Set-APIKeysConfig.
     .PARAMETER Path
         Path to the .psd1 configuration file.
     #>
@@ -78,7 +78,7 @@ function Import-ApiKeysConfig {
     if ($config.ContainsKey('BwsTokenItem')) { $params['BwsTokenItem'] = $config.BwsTokenItem }
     if ($config.ContainsKey('KeyMap')) { $params['KeyMap'] = $config.KeyMap }
 
-    Set-ApiKeysConfig @params
+    Set-APIKeysConfig @params
 }
 
 # endregion
@@ -177,7 +177,7 @@ function Get-BwsSecretValue {
     }
 }
 
-function Set-ApiKeysFromMapEntry {
+function Set-APIKeysFromMapEntry {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -213,13 +213,13 @@ function Set-ApiKeysFromMapEntry {
     return $true
 }
 
-function Get-ApiKeyMap {
+function Get-APIKeyMap {
     [CmdletBinding()]
     param()
     $script:KeyMap
 }
 
-function Set-AllApiKeys {
+function Set-AllAPIKeys {
     [CmdletBinding()]
     param(
         # Filter by Name OR by env var name
@@ -234,7 +234,7 @@ function Set-AllApiKeys {
     $entries = $script:KeyMap
 
     if ($null -eq $entries -or $entries.Count -eq 0) {
-        Write-Warning "KeyMap is empty. Please configure the module using Set-ApiKeysConfig or Import-ApiKeysConfig."
+        Write-Warning "KeyMap is empty. Please configure the module using Set-APIKeysConfig or Import-APIKeysConfig."
         return [pscustomobject]@{ Success = 0; Failed = 0; Total = 0 }
     }
 
@@ -256,7 +256,7 @@ function Set-AllApiKeys {
     $fail = 0
 
     foreach ($e in $entries) {
-        if (Set-ApiKeysFromMapEntry -Entry $e -Quiet:$Quiet -Verbose:$VerbosePreference) { $ok++ } else { $fail++ }
+        if (Set-APIKeysFromMapEntry -Entry $e -Quiet:$Quiet -Verbose:$VerbosePreference) { $ok++ } else { $fail++ }
     }
 
     if (-not $Quiet) {
@@ -266,7 +266,7 @@ function Set-AllApiKeys {
     [pscustomobject]@{ Success = $ok; Failed = $fail; Total = $ok + $fail }
 }
 
-function Clear-ApiKeyEnv {
+function Clear-APIKeyEnv {
     [CmdletBinding()]
     param(
         # Also remove BW_SESSION and BWS_ACCESS_TOKEN
@@ -286,5 +286,5 @@ function Clear-ApiKeyEnv {
 }
 # endregion
 
-Set-Alias -Name load_keys -Value Set-AllApiKeys
-Export-ModuleMember -Function Get-BwsSecretValue, Get-ApiKeyMap, Set-AllApiKeys, Clear-ApiKeyEnv, Set-ApiKeysConfig, Import-ApiKeysConfig -Alias load_keys
+Set-Alias -Name load_keys -Value Set-AllAPIKeys
+Export-ModuleMember -Function Get-BwsSecretValue, Get-APIKeyMap, Set-AllAPIKeys, Clear-APIKeyEnv, Set-APIKeysConfig, Import-APIKeysConfig -Alias load_keys

@@ -15,11 +15,11 @@ if (-not (Test-Path $configPath)) {
 
 if (Test-Path $configPath) {
     Write-Host "Loading configuration from $configPath..."
-    Import-ApiKeysConfig -Path $configPath
+    Import-APIKeysConfig -Path $configPath
 
     # Load Keys (this sets env vars like GITHUB_ACCESS_TOKEN)
     Write-Host "Loading API Keys..."
-    Set-AllApiKeys
+    Set-AllAPIKeys
 }
 else {
     Write-Warning "Configuration file config.psd1 not found. API keys might not be loaded."
