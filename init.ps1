@@ -1,4 +1,5 @@
 # Main entry point for the Git-Init script
+param([switch]$Reconfigure)
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
@@ -43,9 +44,33 @@ $choice = $Host.UI.PromptForChoice($title, $message, $choices, 0)
 if ($choice -eq 0) {
     # Create new repo
     $repoName = Read-Host "Enter the name for the new repository"
-    $username = Read-Host "Enter your GitHub username"
-    $name = Read-Host "Enter your full name"
-    $email = Read-Host "Enter your email address"
+
+    # Determine GitHub username
+    $username = $null
+    if (-not $Reconfigure) {
+        $username = Get-GHUser
+    }
+    if ([string]::IsNullOrWhiteSpace($username)) {
+        $username = Read-Host "Enter your GitHub username"
+    }
+
+    # Determine Name
+    $name = $null
+    if (-not $Reconfigure) {
+        $name = git config --global user.name
+    }
+    if ([string]::IsNullOrWhiteSpace($name)) {
+        $name = Read-Host "Enter your full name"
+    }
+
+    # Determine Email
+    $email = $null
+    if (-not $Reconfigure) {
+        $email = git config --global user.email
+    }
+    if ([string]::IsNullOrWhiteSpace($email)) {
+        $email = Read-Host "Enter your email address"
+    }
 
     $repo = New-GHRepository -RepoName $repoName
     if ($repo) {
