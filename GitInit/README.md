@@ -94,31 +94,6 @@ Ensure you have the following installed and available in your PATH:
 
 ### 1. Usage
 
-Run the entry point script from a PowerShell session:
-        
         Import-Module APIKeys
         Import-Module GitInit
         
-The init script will:
-1.  Load your configuration.
-2.  Ensure you are logged into Bitwarden (prompting for unlock/login if necessary).
-3.  Retrieve your GitHub token.
-4.  Present a menu to **Create a new repository** or **Clone an existing repository**.
-
-#### Creating a Repository
-*   Prompts for repository name, GitHub username, full name, and email.
-*   Creates a private repository on GitHub.
-*   Initializes a local folder, sets up the remote, creates a README and LICENSE, and pushes the initial commit.
-
-#### Cloning a Repository
-*   Fetches your list of repositories from GitHub.
-*   Allows you to select a repository from a list.
-*   Configures the appropriate Git credential helper for your OS.
-*   Clones the repository.
-
-## Cross-Platform Support
-
-This port is designed to work on Windows, macOS, and Linux.
-*   **Windows:** Uses `manager` credential helper.
-*   **macOS:** Uses `osxkeychain` credential helper.
-*   **Linux:** Creates a custom ephemeral credential helper script using the retrieved token.
