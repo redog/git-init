@@ -15,6 +15,30 @@ function Get-GitHubAuthHeader {
         Accept        = "application/vnd.github.v3+json"
     }
 }
+
+function Get-GHUser {
+    <#
+    .SYNOPSIS
+    Fetches the authenticated GitHub user.
+    #>
+    [CmdletBinding()]
+    param()
+
+    $headers = Get-GitHubAuthHeader
+
+    try {
+        $response = Invoke-RestMethod `
+            -Uri "https://api.github.com/user" `
+            -Headers $headers
+
+        return $response.login
+    }
+    catch {
+        Write-Warning "Failed to fetch GitHub user. Error: $_"
+        return $null
+    }
+}
+
 function Initialize-LocalGitRepository {
     <#
     .SYNOPSIS
