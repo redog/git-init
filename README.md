@@ -36,7 +36,7 @@ For `bws`, you can use the included helper script:
 
 ### 1. Configuration
 
-Create a configuration file to tell the tool which secrets to load. You can place this file at `./config.psd1` (in the repo root) or `~/.git-init.ps1`.
+Create a configuration file to tell the tool which secrets to load. You can place this file at `./config.psd1` (in the repo root) or `~/.git-init.psd1`.
 
 **Example `config.psd1`:**
 
