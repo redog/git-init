@@ -10,7 +10,7 @@ Import-Module (Join-Path $ScriptDir "GitInit") -Force
 # Load configuration
 $configPath = Join-Path $ScriptDir "config.psd1"
 if (-not (Test-Path $configPath)) {
-    $configPath = Join-Path $HOME ".git-init.ps1"
+    $configPath = Join-Path $HOME ".git-init.psd1"
 }
 
 if (Test-Path $configPath) {
@@ -22,7 +22,7 @@ if (Test-Path $configPath) {
     Set-AllAPIKeys
 }
 else {
-    Write-Warning "Configuration file config.psd1 not found. API keys might not be loaded."
+    Write-Warning "Configuration file not found (checked '$($ScriptDir)/config.psd1' and '$HOME/.git-init.psd1'). API keys might not be loaded."
 }
 
 # Verify GitHub Token

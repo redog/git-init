@@ -1,5 +1,6 @@
 # PowerShell module for Git-Init functionality
 # This module contains functions for interacting with GitHub.
+#Requires -Version 7.0
 Set-StrictMode -Version Latest
 
 function Get-GitHubAuthHeader {
@@ -91,13 +92,22 @@ function Get-GHRepositories {
     param()
 
     $headers = Get-GitHubAuthHeader
+    $allRepos = @()
+    $page = 1
+    $perPage = 100
 
     try {
-        $response = Invoke-RestMethod `
-            -Uri "https://api.github.com/user/repos" `
-            -Headers $headers
+        do {
+            $uri = "https://api.github.com/user/repos?per_page=$perPage&page=$page"
+            $response = Invoke-RestMethod -Uri $uri -Headers $headers
 
-        return $response.full_name
+            if ($response) {
+                $allRepos += $response
+                $page++
+            }
+        } while ($response -and $response.Count -eq $perPage)
+
+        return $allRepos.full_name
     }
     catch {
         Write-Error "Failed to fetch repositories. Error: $_"
