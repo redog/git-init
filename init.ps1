@@ -96,9 +96,6 @@ elseif ($choice -eq 1) {
             Write-Warning "Invalid selection."
         }
 
-        # Set-GitCredentialHelper # TODO: Implement this in GitInit module
-        Write-Warning "Credential helper setup is not yet implemented."
-
         git clone "https://github.com/$selectedRepo.git"
     }
 }
