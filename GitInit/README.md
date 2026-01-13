@@ -65,8 +65,8 @@ Ensure you have the following installed and available in your PATH:
           # powershell
           $env:BWS_ACCESS_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMzQiLCJzY29wZSI6ImFwaSJ9.RmFrZVNpZ25hdHVyZQ"
  
-          bws secret create GITHUB_ACCESS_TOKEN github_pat_11111111112222222333333 02c45a25-d69b-4540-a489-b3d1013ef541
-          {
+         bws secret create GITHUB_ACCESS_TOKEN github_pat_11111111112222222333333 02c45a25-d69b-4540-a489-b3d1013ef541
+           {
             "id": "7bac9c86-7954-4f79-b853-b3d1014c6742",
             "organizationId": "ac1d066a-785b-49fb-a6e0-b3d1013b30f6",
             "projectId": "02c45a25-d69b-4540-a489-b3d1013ef541",
@@ -76,8 +76,14 @@ Ensure you have the following installed and available in your PATH:
             "creationDate": "2026-01-13T20:10:14.603711300Z",
             "revisionDate": "2026-01-13T20:10:14.603711400Z"
           }
-          
-    ---
+        # review all of the projects secrets that will be injected into commands:
+        # powershell
+        bws run --project-id 02c45a25-d69b-4540-a489-b3d1013ef541 -- "dir env:"
+        # bash
+        bws run --project-id 02c45a25-d69b-4540-a489-b3d1013ef541 -- env
+   
+
+   ---
         
           # config.psd1
           @{
