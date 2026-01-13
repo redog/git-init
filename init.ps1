@@ -35,8 +35,8 @@ if (-not $env:GITHUB_ACCESS_TOKEN) {
 $title = "Git-Init"
 $message = "What would you like to do?"
 $choices = [System.Management.Automation.Host.ChoiceDescription[]]@(
-    (New-Object System.Management.Automation.Host.ChoiceDescription -ArgumentList '&Create a new repository', 'Create a new repository'),
-    (New-Object System.Management.Automation.Host.ChoiceDescription -ArgumentList 'C&lone an existing repository', 'Clone an existing repository')
+    (New-Object System.Management.Automation.Host.ChoiceDescription -ArgumentList '&New repository', 'Create a new repository'),
+    (New-Object System.Management.Automation.Host.ChoiceDescription -ArgumentList '&Clone existing repository', 'Clone an existing repository')
 )
 
 $choice = $Host.UI.PromptForChoice($title, $message, $choices, 0)
