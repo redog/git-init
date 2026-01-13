@@ -41,7 +41,6 @@ Ensure you have the following installed and available in your PATH:
     
          # Our example github access token
          github_pat_11111111112222222333333
-
     
 1. After logging into the secrets manager for the first time create a company, project, and machine account.
     * Example: contoso, git-init, git-init-apiUser
@@ -56,7 +55,6 @@ Ensure you have the following installed and available in your PATH:
          02c45a25-d69b-4540-a489-b3d1013ef541   git-init   2026-01-13 19:21:17
     
     Armed with our new bws access token we can now store our other API tokens in it's secure vault.
-
           
           # Our example bws token
           eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMzQiLCJzY29wZSI6ImFwaSJ9.RmFrZVNpZ25hdHVyZQ
@@ -82,7 +80,6 @@ Ensure you have the following installed and available in your PATH:
         # bash
         bws run --project-id 02c45a25-d69b-4540-a489-b3d1013ef541 -- env
    
-
    ---
         
           # config.psd1
@@ -91,12 +88,6 @@ Ensure you have the following installed and available in your PATH:
                 @{ Name='GitHub'     ; SecretId='7bac9c86-7954-4f79-b853-b3d1014c6742' ; Env=@{ GITHUB_ACCESS_TOKEN  = '$secret' } }
             )
           }
-          
-
-    - This one allows us to login to the bw CLI without 2FA challenge? I've forgotten...TODO:fix this README 
-    bw web vault -> Settings -> Security -> Keys -> View API Key -> <Enter Master Password> -> View Key
-    This is the key for the `bw` CLI tool
-
 
 ### 1. Usage
 
