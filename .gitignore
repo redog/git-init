@@ -1,2 +1,3 @@
 # Ignore PowerShell configuration file
-GitInit/config.psd1
+APIKeys/config.psd1
+config.psd1
