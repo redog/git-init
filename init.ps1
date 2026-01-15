@@ -1,5 +1,8 @@
 # Main entry point for the Git-Init script
-param([switch]$Reconfigure)
+param(
+    [switch]$Reconfigure,
+    [switch]$Reload
+)
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
@@ -18,8 +21,36 @@ if (Test-Path $configPath) {
     Import-APIKeysConfig -Path $configPath
 
     # Load Keys (this sets env vars like GITHUB_ACCESS_TOKEN)
-    Write-Host "Loading API Keys..."
-    Set-AllAPIKeys
+    $shouldLoadKeys = $Reload
+    if (-not $shouldLoadKeys) {
+        $keyMap = Get-APIKeyMap
+        if ($null -eq $keyMap -or $keyMap.Count -eq 0) {
+            $shouldLoadKeys = $true
+        }
+        else {
+            $missingKeys = $false
+            foreach ($entry in $keyMap) {
+                foreach ($envVar in $entry.Env.Keys) {
+                    if (-not (Test-Path "Env:$envVar")) {
+                        $missingKeys = $true
+                        break
+                    }
+                }
+                if ($missingKeys) { break }
+            }
+            if ($missingKeys) {
+                $shouldLoadKeys = $true
+            }
+            else {
+                Write-Host "API Keys already loaded. Use -Reload to force reload."
+            }
+        }
+    }
+
+    if ($shouldLoadKeys) {
+        Write-Host "Loading API Keys..."
+        Set-AllAPIKeys
+    }
 }
 else {
     Write-Warning "Configuration file not found (checked '$($ScriptDir)/config.psd1' and '$HOME/.git-init.psd1'). API keys might not be loaded."
@@ -36,7 +67,8 @@ $title = "Git-Init"
 $message = "What would you like to do?"
 $choices = [System.Management.Automation.Host.ChoiceDescription[]]@(
     (New-Object System.Management.Automation.Host.ChoiceDescription -ArgumentList '&New repository', 'Create a new repository'),
-    (New-Object System.Management.Automation.Host.ChoiceDescription -ArgumentList '&Clone existing repository', 'Clone an existing repository')
+    (New-Object System.Management.Automation.Host.ChoiceDescription -ArgumentList '&Clone existing repository', 'Clone an existing repository'),
+    (New-Object System.Management.Automation.Host.ChoiceDescription -ArgumentList 'Continue to &shell', 'Exit the script and continue to shell')
 )
 
 $choice = $Host.UI.PromptForChoice($title, $message, $choices, 0)
@@ -98,4 +130,7 @@ elseif ($choice -eq 1) {
 
         git clone "https://github.com/$selectedRepo.git"
     }
+}
+elseif ($choice -eq 2) {
+    Write-Host "Continuing to shell..."
 }
