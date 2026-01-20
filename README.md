@@ -29,7 +29,7 @@ winget install Bitwarden.CLI
 
 For `bws`, you can use the included helper script:
 ```powershell
-./MInstall-BWS.ps1
+& ./MInstall-BWS.ps1
 ```
 
 ## Setup
