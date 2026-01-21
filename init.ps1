@@ -128,8 +128,22 @@ elseif ($choice -eq 1) {
             Write-Warning "Invalid selection."
         }
 
-        git clone "https://github.com/$selectedRepo.git"
-    }
+        # Clone using authenticated URL to avoid prompts
+        $authUrl = "https://x-access-token:$($env:GITHUB_ACCESS_TOKEN)@github.com/$selectedRepo.git"
+        git clone $authUrl
+        #git clone "https://github.com/$selectedRepo.git"
+        $repoName = Split-Path $selectedRepo -Leaf
+        $username = Get-GHUser
+        if ((Test-Path $repoName ) -and ( -not [string]::IsNullOrWhiteSpace($username))) {
+            Push-Location $repoName
+            $cleanUrl = "https://$username@github.com/$selectedRepo.git"
+            git remote set-url origin $cleanUrl
+            Write-Host "Clone complete. Remote origin reset to clean URL."
+            Pop-Location
+        } else {
+            Write-Warning "Could not reset remote URL. Please check the cloned repository."
+        }
+    } 
 }
 elseif ($choice -eq 2) {
     Write-Host "Continuing to shell..."
