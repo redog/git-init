@@ -59,7 +59,7 @@ else {
 # Verify GitHub Token
 if (-not $env:GITHUB_ACCESS_TOKEN) {
     Write-Error "GITHUB_ACCESS_TOKEN is not set. Please ensure config.psd1 maps a secret to this environment variable and that you have authenticated with Bitwarden."
-    exit 1
+    return
 }
 
 # Prompt user for action
@@ -112,7 +112,7 @@ if ($choice -eq 0) {
 }
 elseif ($choice -eq 1) {
     # Clone existing repo
-    $repositories = Get-GHRepositories | Sort-Object
+    $repositories = @(Get-GHRepositories | Sort-Object)
     if ($repositories) {
         Write-Host "Select a repository to clone:"
         for ($i = 0; $i -lt $repositories.Count; $i++) {
@@ -134,7 +134,7 @@ elseif ($choice -eq 1) {
         #git clone "https://github.com/$selectedRepo.git"
         $repoName = Split-Path $selectedRepo -Leaf
         $username = Get-GHUser
-        if ((Test-Path $repoName ) -and ( -not [string]::IsNullOrWhiteSpace($username))) {
+        if ((Test-Path $repoName) -and ( -not [string]::IsNullOrWhiteSpace($username))) {
             Push-Location $repoName
             $cleanUrl = "https://$username@github.com/$selectedRepo.git"
             git remote set-url origin $cleanUrl
