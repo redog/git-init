@@ -74,7 +74,7 @@ bw login
 Run the main entry point script:
 
 ```powershell
-& ./init.ps1
+. ./git-init/init.ps1
 ```
 
 The script will:
