@@ -84,32 +84,62 @@ function Import-APIKeysConfig {
 # endregion
 
 # region: bitwarden bootstrap
-function Get-BwSessionEnv {
+function Connect-Bitwarden {
+    <#
+    .SYNOPSIS
+        Ensures the Bitwarden CLI is logged in and unlocked.
+    .DESCRIPTION
+        Checks 'bw status'.
+        - If unauthenticated:
+            - Uses API Key login if Env:BW_CLIENTID and Env:BW_CLIENTSECRET are present.
+            - Otherwise falls back to interactive 'bw login'.
+        - If locked:
+            - Checks for Env:BW_SESSION.
+            - If missing, prompts for unlock (interactive or via password env if supported) and sets BW_SESSION.
+    #>
     [CmdletBinding()]
     param()
 
     if (-not (Get-Command bw -ErrorAction SilentlyContinue)) {
-        throw "Bitwarden CLI 'bw' not found in PATH. Install it or ensure it's available."
+        throw "Bitwarden CLI 'bw' not found in PATH."
     }
 
+    # --- 1. Authentication Check ---
     $status = bw status | ConvertFrom-Json
-
     if ($status.status -eq 'unauthenticated') {
-        throw "bw is unauthenticated. Run: bw login"
+        Write-Verbose "Bitwarden is unauthenticated."
+
+        # Check for Environment Variables for Headless/API Login
+        if ($env:BW_CLIENTID -and $env:BW_CLIENTSECRET) {
+            Write-Host "🤖 Logging in with API Key..." -ForegroundColor Cyan
+            bw login --apikey
+            if ($LASTEXITCODE -ne 0) { throw "API Key login failed." }
+        }
+        else {
+            Write-Host "👤 Logging in interactively..." -ForegroundColor Cyan
+            bw login
+            if ($LASTEXITCODE -ne 0) { throw "Interactive login failed." }
+        }
+
+        # Refresh status after login attempt
+        $status = bw status | ConvertFrom-Json
     }
 
+    # --- 2. Unlock/Session Check ---
     if ($status.status -eq 'locked') {
-        # This will prompt for your master password if needed.
-        $session = bw unlock --raw
-        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($session)) {
-            throw "Failed to unlock bw vault (could not obtain session key)."
-        }
-        $env:BW_SESSION = $session.Trim()
+        if (-not $env:BW_SESSION) {
+            Write-Host "🔓 Unlocking Vault..." -ForegroundColor Cyan
 
-        # sanity check
-        $status2 = bw status | ConvertFrom-Json
-        if ($status2.status -ne 'unlocked') {
-            throw "bw did not report unlocked after setting BW_SESSION (status: $($status2.status))."
+            # Note: Even with API Key, we need to unlock to decrypt data
+            # Use --raw to get just the session key string
+            $session = bw unlock --raw
+
+            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($session)) {
+                throw "Failed to unlock bw vault (could not obtain session key)."
+            }
+
+            $env:BW_SESSION = $session.Trim()
+            Write-Host "✅ Vault unlocked." -ForegroundColor Green
         }
     }
 }
@@ -121,7 +151,7 @@ function Get-BwsAccessToken {
     )
 
     if (-not $env:BWS_ACCESS_TOKEN) {
-        Get-BwSessionEnv
+        Connect-Bitwarden
         $item = bw get item $BwsTokenItemIdOrName | ConvertFrom-Json
 
         $token = $null
@@ -287,4 +317,4 @@ function Clear-APIKeyEnv {
 # endregion
 
 Set-Alias -Name load_keys -Value Set-AllAPIKeys
-Export-ModuleMember -Function Get-BwsSecretValue, Get-APIKeyMap, Set-AllAPIKeys, Clear-APIKeyEnv, Set-APIKeysConfig, Import-APIKeysConfig -Alias load_keys
+Export-ModuleMember -Function Get-BwsSecretValue, Get-APIKeyMap, Set-AllAPIKeys, Clear-APIKeyEnv, Set-APIKeysConfig, Import-APIKeysConfig, Connect-Bitwarden -Alias load_keys
