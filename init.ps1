@@ -62,6 +62,37 @@ if (-not $env:GITHUB_ACCESS_TOKEN) {
     return
 }
 
+# Ensure git-credential-env exists on Linux/macOS
+if ($IsLinux -or $IsMacOS) {
+    $configDir = Join-Path $HOME ".config"
+    if (-not (Test-Path $configDir)) {
+        New-Item -ItemType Directory -Path $configDir | Out-Null
+    }
+
+    $helperScript = Join-Path $configDir "git-credential-env"
+    if (-not (Test-Path $helperScript)) {
+        $helperContent = @"
+#!/usr/bin/env bash
+set -euo pipefail
+op=`${1:-}
+while IFS= read -r line && [[ -n `$line ]]; do :; done
+[[ `$op == get ]] || exit 0
+token=`${GITHUB_ACCESS_TOKEN:-}
+if [[ -z `$token ]]; then
+    [[ -n `${GH_TOKEN_ID:-} ]] || { echo "GH_TOKEN_ID not set" >&2; exit 1; }
+    token=`$(bws secret get "`$GH_TOKEN_ID" -o json | jq -r .value)
+fi
+echo "username=x-access-token"
+echo "password=`$token"
+"@
+        Set-Content -Path $helperScript -Value $helperContent
+        # Make it executable
+        if (Get-Command chmod -ErrorAction SilentlyContinue) {
+            chmod +x $helperScript
+        }
+    }
+}
+
 # Prompt user for action
 $title = "Git-Init"
 $message = "What would you like to do?"
@@ -128,20 +159,35 @@ elseif ($choice -eq 1) {
             Write-Warning "Invalid selection."
         }
 
-        # Clone using authenticated URL to avoid prompts
-        $authUrl = "https://x-access-token:$($env:GITHUB_ACCESS_TOKEN)@github.com/$selectedRepo.git"
-        git clone $authUrl
-        #git clone "https://github.com/$selectedRepo.git"
+        # Clone using credential helper to avoid prompts
+        $helperScript = Join-Path $HOME ".config/git-credential-env"
+        if ($IsLinux) {
+            git -c credential.helper=$helperScript clone "https://github.com/$selectedRepo.git"
+        }
+        elseif ($IsMacOS) {
+            git -c credential.helper=osxkeychain clone "https://github.com/$selectedRepo.git"
+        }
+        else {
+            git -c credential.helper=manager clone "https://github.com/$selectedRepo.git"
+        }
+
         $repoName = Split-Path $selectedRepo -Leaf
-        $username = Get-GHUser
-        if ((Test-Path $repoName) -and ( -not [string]::IsNullOrWhiteSpace($username))) {
+        if (Test-Path $repoName) {
             Push-Location $repoName
-            $cleanUrl = "https://$username@github.com/$selectedRepo.git"
-            git remote set-url origin $cleanUrl
-            Write-Host "Clone complete. Remote origin reset to clean URL."
+            if ($IsLinux) {
+                git config credential.helper $helperScript
+            }
+            elseif ($IsMacOS) {
+                git config credential.helper osxkeychain
+            }
+            else {
+                git config credential.helper manager
+            }
+            git config remote.origin.url "https://github.com/$selectedRepo.git"
+            Write-Host "Clone complete. Credential helper configured."
             Pop-Location
         } else {
-            Write-Warning "Could not reset remote URL. Please check the cloned repository."
+            Write-Warning "Failed to clone repository. Please check the cloned repository."
         }
     } 
 }
