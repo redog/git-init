@@ -73,6 +73,17 @@ function Initialize-LocalGitRepository {
     git config user.name $Name
     git config user.email $Email
 
+    $helperScript = Join-Path $HOME ".config/git-credential-env"
+    if ($IsLinux) {
+        git config credential.helper $helperScript
+    }
+    elseif ($IsMacOS) {
+        git config credential.helper osxkeychain
+    }
+    else {
+        git config credential.helper manager
+    }
+
     git remote add origin "https://github.com/$Username/$RepoName.git"
 
     "$RepoName by $Username" | Out-File -FilePath README.md
