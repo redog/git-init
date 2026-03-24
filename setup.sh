@@ -116,29 +116,23 @@ install_bw() {
 }
 
 install_bws() {
-  local arch="$1"
   if command -v bws >/dev/null 2>&1; then
     echo "bws is already installed."
     return
   fi
-  local VERSION="1.0.0"
-  local bws_arch
-  if [[ "$arch" == "amd64" ]]; then
-    bws_arch="x86_64-unknown-linux-gnu"
-  else
-    bws_arch="aarch64-unknown-linux-gnu"
+  if ! command -v cargo >/dev/null 2>&1; then
+    echo "cargo (Rust) is not installed. Please install Rust (e.g., via https://rustup.rs/) to install bws."
+    safe_exit 1
   fi
-  local FILENAME="bws-${bws_arch}-${VERSION}.zip"
-  local DOWNLOAD_URL="https://github.com/bitwarden/sdk-sm/releases/download/bws-v${VERSION}/${FILENAME}"
-  local INSTALL_DIR="${HOME}/.local/bin"
-  mkdir -p "$INSTALL_DIR"
-  echo "Downloading bws ${VERSION}..."
-  curl -L -o "/tmp/${FILENAME}" "$DOWNLOAD_URL"
-  unzip -o "/tmp/${FILENAME}" -d /tmp/bws-temp
-  mv /tmp/bws-temp/bws "$INSTALL_DIR/"
-  chmod +x "$INSTALL_DIR/bws"
-  rm -rf "/tmp/${FILENAME}" /tmp/bws-temp
-  echo "bws installed to $INSTALL_DIR/bws"
+  echo "Installing bws via cargo..."
+  cargo install bws
+
+  # bws is typically installed to ~/.cargo/bin
+  if [[ -f "${HOME}/.cargo/bin/bws" ]]; then
+    echo "bws installed to ${HOME}/.cargo/bin/bws"
+  else
+    echo "bws was installed via cargo but could not be located in ${HOME}/.cargo/bin/bws."
+  fi
 }
 
 ensure_path() {
@@ -146,6 +140,12 @@ ensure_path() {
   if [[ ":$PATH:" != *":${target}:"* ]]; then
     echo "Adding ${target} to PATH in ~/.bashrc"
     echo "export PATH=\"\$PATH:${target}\"" >> "${HOME}/.bashrc"
+  fi
+
+  local cargo_bin="${HOME}/.cargo/bin"
+  if [[ -d "${cargo_bin}" ]] && [[ ":$PATH:" != *":${cargo_bin}:"* ]]; then
+    echo "Adding ${cargo_bin} to PATH in ~/.bashrc"
+    echo "export PATH=\"\$PATH:${cargo_bin}\"" >> "${HOME}/.bashrc"
   fi
 }
 
@@ -171,7 +171,7 @@ main() {
 
   install_jq "$arch"
   install_bw "$arch"
-  install_bws "$arch"
+  install_bws
 
   ensure_path
 

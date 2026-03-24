@@ -18,6 +18,7 @@ A robust PowerShell port suitable for Windows, macOS, and Linux.
 2.  **Git**
 3.  **Bitwarden CLI** (`bw`) - For vault unlocking.
 4.  **Bitwarden Secrets Manager CLI** (`bws`) - For secret retrieval.
+5.  **Rust / Cargo** - For installing `bws`.
 
 ### Installing Prerequisites (Windows)
 
@@ -25,6 +26,7 @@ A robust PowerShell port suitable for Windows, macOS, and Linux.
 winget install pwsh
 winget install Git.Git
 winget install Bitwarden.CLI
+winget install Rustlang.Rustup
 ```
 
 For `bws`, you can use the included helper script:
@@ -93,7 +95,7 @@ The original Bash implementation for Unix-like environments.
 
 
 ## Prerequisites
-  1. Curl - unzip - git
+  1. Curl - unzip - git - cargo (Rust)
 
 ### Setup
 Run `./setup.sh` to install the following tools if they are not already available:
