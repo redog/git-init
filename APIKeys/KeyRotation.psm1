@@ -23,9 +23,15 @@ function Update-VaultAPIKey {
         [Parameter(Mandatory=$true)]
         [string]$Name,
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [string]$NewValue
     )
+
+    if ([string]::IsNullOrWhiteSpace($NewValue)) {
+        $secureInput = Read-Host "Enter the new API key for $Name" -AsSecureString
+        # Convert the securely read string back to plain text for the BWS CLI payload
+        $NewValue = ConvertFrom-SecureString -SecureString $secureInput -AsPlainText
+    }
 
     # 1. Verify APIKeys module is loaded and get the KeyMap
     if (-not (Get-Command Get-APIKeyMap -ErrorAction SilentlyContinue)) {
