@@ -9,6 +9,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 # Import Modules
 Import-Module (Join-Path $ScriptDir "APIKeys") -Force
 Import-Module (Join-Path $ScriptDir "GitInit") -Force
+Import-Module (Join-Path $ScriptDir "APIKeys" "KeyRotation") -Force
 
 # Load configuration
 $configPath = Join-Path $ScriptDir "config.psd1"
