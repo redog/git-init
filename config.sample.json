@@ -1,0 +1,25 @@
+{
+  "BwsCliPath": "bws",
+  "BwsTokenItem": "Bitwarden Secrets Manager Service Account",
+  "KeyMap": [
+    {
+      "Name": "GitHub",
+      "SecretId": "00000000-0000-0000-0000-000000000000",
+      "Env": { "GITHUB_ACCESS_TOKEN": "$secret" }
+    },
+    {
+      "Name": "OpenAI",
+      "SecretId": "00000000-0000-0000-0000-000000000000",
+      "Env": { "OPENAI_API_KEY": "$secret" }
+    },
+    {
+      "Name": "LangSmith",
+      "SecretId": "00000000-0000-0000-0000-000000000000",
+      "Env": {
+        "LANGCHAIN_TRACING_V2": "true",
+        "LANGCHAIN_API_KEY": "$secret",
+        "LANGSMITH_API_KEY": "$secret"
+      }
+    }
+  ]
+}

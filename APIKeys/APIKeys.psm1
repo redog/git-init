@@ -54,12 +54,13 @@ function Set-APIKeysConfig {
 function Import-APIKeysConfig {
     <#
     .SYNOPSIS
-        Imports configuration from a .psd1 file.
+        Imports configuration from a .json or .psd1 file.
     .DESCRIPTION
-        Reads a PowerShell data file (.psd1) containing a hashtable with keys 'BwsCliPath', 'BwsTokenItem', and 'KeyMap',
-        and applies them using Set-APIKeysConfig.
+        Reads a configuration file containing keys 'BwsCliPath', 'BwsTokenItem', and 'KeyMap',
+        and applies them using Set-APIKeysConfig. JSON is the canonical format (shared with
+        the bash implementation); .psd1 is supported for backwards compatibility.
     .PARAMETER Path
-        Path to the .psd1 configuration file.
+        Path to the configuration file (.json or .psd1).
     #>
     [CmdletBinding()]
     param(
@@ -71,12 +72,37 @@ function Import-APIKeysConfig {
         throw "Configuration file not found: $Path"
     }
 
-    $config = Import-PowerShellDataFile -Path $Path
+    $config = $null
+    if ($Path -match '\.json$') {
+        $config = Get-Content -Raw -Path $Path | ConvertFrom-Json -AsHashtable
+    }
+    else {
+        $config = Import-PowerShellDataFile -Path $Path
+    }
+
+    # Normalize KeyMap entries so each entry's Env is a hashtable. ConvertFrom-Json
+    # with -AsHashtable already gives hashtables, but keep this defensive.
+    if ($config.ContainsKey('KeyMap') -and $config.KeyMap) {
+        $normalized = foreach ($entry in $config.KeyMap) {
+            if ($entry -is [hashtable]) { $entry }
+            else {
+                $h = @{}
+                foreach ($p in $entry.PSObject.Properties) { $h[$p.Name] = $p.Value }
+                if ($h.Env -and -not ($h.Env -is [hashtable])) {
+                    $envH = @{}
+                    foreach ($p in $h.Env.PSObject.Properties) { $envH[$p.Name] = $p.Value }
+                    $h.Env = $envH
+                }
+                $h
+            }
+        }
+        $config.KeyMap = @($normalized)
+    }
 
     $params = @{}
-    if ($config.ContainsKey('BwsCliPath')) { $params['BwsCliPath'] = $config.BwsCliPath }
+    if ($config.ContainsKey('BwsCliPath'))    { $params['BwsCliPath']    = $config.BwsCliPath }
     if ($config.ContainsKey('BwsTokenItem')) { $params['BwsTokenItem'] = $config.BwsTokenItem }
-    if ($config.ContainsKey('KeyMap')) { $params['KeyMap'] = $config.KeyMap }
+    if ($config.ContainsKey('KeyMap'))       { $params['KeyMap']       = $config.KeyMap }
 
     Set-APIKeysConfig @params
 }

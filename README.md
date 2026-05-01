@@ -1,197 +1,170 @@
 # Git-Init
 
-Tools to streamline the initialization and cloning of GitHub repositories, with integrated secret management using Bitwarden.
+Tools to streamline the initialization and cloning of GitHub repositories,
+with integrated secret management using Bitwarden / Bitwarden Secrets Manager.
 
-This repository provides two implementations:
-1.  **[PowerShell Version](#powershell-version-cross-platform)** (New, Cross-platform)
-2.  **[Shell Version](#shell-version-legacy)** (Original, Unix-like)
+Two front-ends share a **single JSON configuration file** and the same key-map
+schema:
+
+1.  **[PowerShell version](#powershell-version)** — `init.ps1` (cross-platform)
+2.  **[Shell version](#shell-version)** — `init.sh` (Linux / macOS)
 
 ---
 
-# PowerShell Version (Cross-platform)
+## Configuration (shared)
 
-A robust PowerShell port suitable for Windows, macOS, and Linux.
+Both implementations read the same configuration file. Lookup order:
 
-## Prerequisites
+1.  `$GIT_INIT_CONFIG` (env var)
+2.  `~/.git-init.json`
+3.  `<repo>/config.json`
+4.  `<repo>/config.psd1` or `~/.git-init.psd1` (PowerShell legacy, still supported)
+
+Copy `config.sample.json` to `config.json` and fill in your IDs:
+
+```json
+{
+  "BwsCliPath": "bws",
+  "BwsTokenItem": "Bitwarden Secrets Manager Service Account",
+  "KeyMap": [
+    {
+      "Name": "GitHub",
+      "SecretId": "00000000-0000-0000-0000-000000000000",
+      "Env": { "GITHUB_ACCESS_TOKEN": "$secret" }
+    }
+  ]
+}
+```
+
+Field meanings:
+
+| Key            | Purpose                                                                    |
+| -------------- | -------------------------------------------------------------------------- |
+| `BwsCliPath`   | Path to the `bws` executable (default: `bws`).                             |
+| `BwsTokenItem` | Name **or** UUID of the bw vault item that contains the BWS access token.  |
+| `KeyMap`       | Array of `{ Name, SecretId, Env }` entries.                                |
+
+Inside an `Env` map, the literal string `$secret` is replaced with the secret
+value retrieved from BWS. Any other value is set as-is (useful for setting flags
+like `LANGCHAIN_TRACING_V2: "true"` alongside an API key).
+
+`config.json` is `.gitignore`-d. The token UUIDs are not secrets themselves, but
+treating them as personal config keeps your repo clean.
+
+---
+
+## PowerShell version
+
+Cross-platform PowerShell 7+ implementation.
+
+### Prerequisites
 
 1.  **PowerShell 7+** (`pwsh`)
 2.  **Git**
-3.  **Bitwarden CLI** (`bw`) - For vault unlocking.
-4.  **Bitwarden Secrets Manager CLI** (`bws`) - For secret retrieval.
-5.  **Rust / Cargo** - For installing `bws`.
+3.  **Bitwarden CLI** (`bw`) — for vault unlocking
+4.  **Bitwarden Secrets Manager CLI** (`bws`) — for secret retrieval
+5.  **Rust / Cargo** — for installing `bws`
 
-### Installing Prerequisites (Windows)
+### Install on Windows
 
 ```powershell
 winget install pwsh
 winget install Git.Git
 winget install Bitwarden.CLI
 winget install Rustlang.Rustup
-```
-
-For `bws`, you can use the included helper script:
-```powershell
 & ./MInstall-BWS.ps1
 ```
 
-## Setup
-
-### 1. Configuration
-
-Create a configuration file to tell the tool which secrets to load. You can place this file at `./config.psd1` (in the repo root) or `~/.git-init.psd1`.
-
-**Example `config.psd1`:**
+### Usage
 
 ```powershell
-@{
-    # Optional: Path to bws executable if not in PATH
-    # BwsCliPath = 'bws'
-
-    # The item in your vault containing the BWS Access Token
-    BwsTokenItem = 'Bitwarden Secrets Manager Service Account'
-
-    # Map secrets to environment variables
-    KeyMap = @(
-        @{
-            Name     = 'GitHub'
-            SecretId = 'your-secret-uuid-here'
-            Env      = @{ GITHUB_ACCESS_TOKEN = '$secret' }
-        }
-    )
-}
+. ./init.ps1                # default flow (load keys + interactive menu)
+. ./init.ps1 -Reload        # force-reload keys even if already in env
+. ./init.ps1 -Reconfigure   # re-prompt for git config (name, email, gh user)
 ```
 
-*Note: You must have a secret in Bitwarden Secrets Manager containing your GitHub Personal Access Token, and map it to `GITHUB_ACCESS_TOKEN`.*
+Exposed cmdlets after sourcing:
 
-### 2. Bitwarden Login
-
-Ensure you are logged into the Bitwarden CLI:
-
-```powershell
-bw login
-```
-
-## Usage
-
-Run the main entry point script:
-
-```powershell
-. ./git-init/init.ps1
-```
-
-The script will:
-1.  Unlock your Bitwarden vault (prompting for master password/PIN if needed) to retrieve the BWS Access Token.
-2.  Use `bws` to fetch your GitHub Token and inject it into the process.
-3.  Present a menu to **Create** or **Clone** a repository.
+| Cmdlet / alias               | Purpose                                              |
+| ---------------------------- | ---------------------------------------------------- |
+| `Set-AllAPIKeys` / `load_keys` | Load keys per `KeyMap` (`-Only`, `-Except`, `-Quiet`). |
+| `Clear-APIKeyEnv`            | Unset all key-map env vars (`-ClearBitwardenSession`). |
+| `Update-VaultAPIKey`         | Update a secret in BWS and reload it locally.        |
+| `Get-APIKeyMap`              | Print the loaded key map.                            |
+| `Connect-Bitwarden`          | Ensure `bw` is logged-in and unlocked.               |
+| `Get-GHUser` / `Get-GHRepositories` / `New-GHRepository` | GitHub helpers. |
 
 ---
 
-# Shell Version (Legacy)
+## Shell version
 
-The original Bash implementation for Unix-like environments.
+Bash implementation matching the PowerShell feature set.
 
-### One liner to initalizes a github repository and configure it locally.
-### Requires GitHub API and bitwarden cli API tokens saved in bitwarden secrets manager, and bitwarden secrets manager API token stored in the bitwarden vault.
+### Prerequisites
 
+`curl`, `unzip`, `git`, `cargo` (Rust). Run `./setup.sh` to install:
 
-## Prerequisites
-  1. Curl - unzip - git - cargo (Rust)
+* `jq` — JSON processor
+* `bw` — Bitwarden CLI
+* `bws` — Bitwarden Secrets Manager CLI
 
-### Setup
-Run `./setup.sh` to install the following tools if they are not already available:
+### Usage
 
-  * jq - JSON processor
-  * bws - Bitwarden SDK (secrets manager)
-  * bw - Bitwarden CLI
-
-The script will automatically log in to Bitwarden using your API key (if available) before unlocking the vault, so no manual `bw login` step is required.
-
-## Configuration
-
-Secret IDs are normally read from `config.env` inside this repository. You can
-store them elsewhere by creating `~/.git-init.env` or by setting the
-`GIT_INIT_CONFIG` environment variable to the path of your preferred config
-file. The scripts will use that file if present before falling back to the repo
-version.
-
-### Configuration Details
-
-The `init.sh` script requires several IDs to be set in the `config.env` file. Here's how to get them:
-
-#### `GH_TOKEN_ID`
-This is the ID of the secret in Bitwarden Secrets Manager that stores your GitHub Personal Access Token.
-
-To get this ID, you first need to create a secret in Bitwarden Secrets Manager that contains your GitHub token. You can do this with the `bws` command:
 ```bash
-# Get the first project id - adjust for your specific secrets manager project
-project_id=$(bws project list | jq -r '.[0].id')
-
-# Store the GitHub access token as a secret named "github-access-token"
-bws secret create github-access-token "$GITHUB_ACCESS_TOKEN" "$project_id"
-
-# Get the ID of the secret we just created
-GH_TOKEN_ID=$(bws secret list "$project_id" | jq -r '.[] | select(.key == "github-access-token") | .id')
-
-# Export for later use in the session
-export GH_TOKEN_ID
-```
-Then, you can list your secrets to get the ID:
-```bash
-bws secret list
-```
-The output will be a JSON array of your secrets. Find the one you just created and copy the `id` value.
-
-#### `BW_API_KEY_ID`
-This is the ID of the secret in Bitwarden Secrets Manager that stores your Bitwarden API Key.
-
-Follow the same process as for `GH_TOKEN_ID` to create a secret for your Bitwarden API Key and get its ID.
-
-#### `BWS_ACCESS_TOKEN_ID`
-This is the ID of the login item in your Bitwarden vault that stores your Bitwarden Secrets Manager access token.
-
-To get this ID, you first need to create a login item in your Bitwarden vault that contains your BWS access token. You can do this with the `bw` command:
-```bash
-bw get template item \
-| jq --arg name  "bitwarden-secrets-manager-key" \
-     --arg notes "Imported via CLI" \
-     --arg user  "$BWS_ACCESS_TOKEN_ID" \
-     --arg pass  "$BWS_ACCESS_TOKEN" '
-      .name  = $name
-    | .notes = $notes
-    | .login = {                       # create the sub‑object in one shot
-        username: $user,
-        password: $pass,
-        uris: [ { uri: "https://bitwarden.com", match: 0 } ]
-      }' \
-| bw encode \
-| bw create item
-```
-Then, you can list your vault items to get the ID or get the token directly with the name/ID:
-```bash
-bw list items --search secrets-manager
-bw get password bitwarden-secrets-manager-key
-bw get password a90cacf8-8cbd-4d7a-be58-b3240149cd3e
-```
-The output will be a JSON array of your vault items. Find the one you just created and copy the `id` value.
-
-## Get it and init it
-### Source the initialization script so that environment variables such as `BW_SESSION` are exported to your current shell.
-
-```
+# Quick one-liner: load keys, install credential helper, run interactive menu.
 source <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/init.sh)
+
+# Local clone, with options:
+source ./init.sh --reload         # force key reload
+source ./init.sh --reconfigure    # re-prompt for git identity
+source ./init.sh --no-menu        # set up env, skip the menu
+./init.sh                          # executed (not sourced) — env stays in subshell
 ```
 
-### Git Credential Helper
+Exposed functions after sourcing:
 
-`init.sh` will automatically create a `git-credential-env` helper in
-`~/.config` when it isn't found. The helper supplies your GitHub
-token at runtime without storing it in git config.
+| Function                          | Purpose                                              |
+| --------------------------------- | ---------------------------------------------------- |
+| `gi_load_keys [--only N1,N2] [--except N1,N2] [--quiet]` | Load keys per `KeyMap`.    |
+| `gi_clear_keys [--all]`           | Unset all key-map env vars (`--all` also clears bw session). |
+| `gi_update_key <name> [value]`    | Update a secret in BWS and reload it locally.        |
+| `gi_list_keys`                    | List `Name`, `SecretId`, env vars per entry.         |
+| `gi_get_secret <secret-id>`       | Fetch a single value from BWS.                       |
+| `gi_connect_bitwarden`            | Ensure `bw` is logged-in and unlocked.               |
+| `gi_get_bws_token`                | Bootstrap `BWS_ACCESS_TOKEN` from the bw vault item. |
+| `gi_gh_user` / `gi_gh_repos` / `gi_gh_new_repo <name>` | GitHub helpers.                |
+| `gi_init_local_repo <repo> <gh-user> <full-name> <email>` | Local init + first push. |
+| `gi_menu`                         | Interactive create/clone menu.                       |
 
-The helper expects your token in the `GITHUB_ACCESS_TOKEN` environment variable
-whenever Git needs authentication. Avoid setting `user.github.token` in any git
-configuration; credentials are provided dynamically by the helper.
+### Sourcing safety
 
+`init.sh` enables `set -euo pipefail` only inside its own main body, and a
+save/restore wrapper guarantees your shell options are returned to whatever they
+were before sourcing — **on every exit path**, including failures. You can
+re-source the script repeatedly from your `.bashrc` without `errexit` /
+`pipefail` leaking into your interactive shell.
 
-### mkrepo.sh
+### Git credential helper
 
-With the access token set in the environemnt this script create a GitHub repository and initialize it locally.
+`init.sh` writes `~/.config/git-credential-env` once. The helper reads
+`GITHUB_ACCESS_TOKEN` (or fetches it via `bws` if `GH_TOKEN_ID` is set) so Git
+can authenticate without storing the token in your repo config.
+
+---
+
+## Migrating from the legacy `config.env` / `config.psd1`
+
+The previous shell version read four IDs from `config.env`:
+`GH_TOKEN_ID`, `BW_API_KEY_ID`, `BWS_ACCESS_TOKEN_ID`, `BW_CLIENTID`.
+
+In the unified JSON config:
+
+* `BWS_ACCESS_TOKEN_ID` → `BwsTokenItem` (use the same UUID, or the item name)
+* `GH_TOKEN_ID` → a `KeyMap` entry with `Name: "GitHub"` and the same `SecretId`,
+  mapped to `GITHUB_ACCESS_TOKEN`.
+* `BW_CLIENTID` and `BW_API_KEY_ID` are no longer used by `init.sh`. To do a
+  headless `bw login --apikey`, set `BW_CLIENTID` / `BW_CLIENTSECRET` in your
+  shell before sourcing (matches the PowerShell behavior).
+
+The PowerShell `config.psd1` format is still read as a fallback, but new setups
+should use `config.json`.

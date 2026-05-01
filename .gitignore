@@ -1,3 +1,9 @@
-# Ignore PowerShell configuration file
+# Local user configuration (real secret IDs and key map).
+# Track config.sample.json instead.
+config.json
+.git-init.json
+
+# Legacy PowerShell-only config; keep ignored for users who still have one.
 APIKeys/config.psd1
 config.psd1
+.git-init.psd1
