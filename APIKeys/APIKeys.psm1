@@ -20,6 +20,10 @@ $script:BwsTokenItem = 'Bitwarden Secrets Manager Service Account'
 #     * literal   => set as-is
 $script:KeyMap = @()
 
+# Path the active config was loaded from / will be saved to. Set by
+# Import-APIKeysConfig and the *-APIKeysConfig*/Add-APIKey/Remove-APIKey helpers.
+$script:ConfigPath = $null
+
 function Set-APIKeysConfig {
     <#
     .SYNOPSIS
@@ -105,6 +109,144 @@ function Import-APIKeysConfig {
     if ($config.ContainsKey('KeyMap'))       { $params['KeyMap']       = $config.KeyMap }
 
     Set-APIKeysConfig @params
+    $script:ConfigPath = (Resolve-Path $Path).Path
+}
+
+function Get-APIKeysConfigPath {
+    [CmdletBinding()]
+    param()
+    $script:ConfigPath
+}
+
+function Show-APIKeysConfig {
+    <#
+    .SYNOPSIS
+        Returns the current in-memory config as a structured object.
+    #>
+    [CmdletBinding()]
+    param()
+    [pscustomobject]@{
+        Path         = $script:ConfigPath
+        BwsCliPath   = $script:BwsCliPath
+        BwsTokenItem = $script:BwsTokenItem
+        KeyMap       = $script:KeyMap
+    }
+}
+
+function Save-APIKeysConfig {
+    <#
+    .SYNOPSIS
+        Persists the in-memory config to a JSON file.
+    .PARAMETER Path
+        Override the destination path. Defaults to the previously loaded
+        path, or ~/.git-init.json if none is set.
+    #>
+    [CmdletBinding()]
+    param([string]$Path)
+
+    if (-not $Path) { $Path = $script:ConfigPath }
+    if (-not $Path) { $Path = Join-Path $HOME '.git-init.json' }
+
+    $payload = [ordered]@{
+        BwsCliPath   = $script:BwsCliPath
+        BwsTokenItem = $script:BwsTokenItem
+        KeyMap       = @($script:KeyMap)
+    }
+
+    $dir = Split-Path -Parent $Path
+    if ($dir -and -not (Test-Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
+    $json = $payload | ConvertTo-Json -Depth 10
+    Set-Content -Path $Path -Value $json -Encoding utf8
+    $script:ConfigPath = (Resolve-Path $Path).Path
+    Write-Host "Wrote $($script:ConfigPath)"
+}
+
+function Initialize-APIKeysConfigFile {
+    <#
+    .SYNOPSIS
+        Create a new git-init config file with empty KeyMap.
+    .PARAMETER Path
+        Where to write the new file. Defaults to ~/.git-init.json.
+    .PARAMETER BwsTokenItem
+        Name or UUID of the bw vault item holding the BWS access token.
+    .PARAMETER BwsCliPath
+        Path to the bws executable.
+    .PARAMETER Force
+        Overwrite an existing config file.
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$Path,
+        [string]$BwsTokenItem = 'Bitwarden Secrets Manager Service Account',
+        [string]$BwsCliPath = 'bws',
+        [switch]$Force
+    )
+    if (-not $Path) { $Path = Join-Path $HOME '.git-init.json' }
+    if ((Test-Path $Path) -and -not $Force) {
+        Write-Warning "Config already exists at $Path. Pass -Force to overwrite, or use Add-APIKey/Set-APIKeysConfigField to modify."
+        return
+    }
+    Set-APIKeysConfig -BwsCliPath $BwsCliPath -BwsTokenItem $BwsTokenItem -KeyMap @()
+    Save-APIKeysConfig -Path $Path
+}
+
+function Add-APIKey {
+    <#
+    .SYNOPSIS
+        Add or update a KeyMap entry and persist to the active config file.
+    .PARAMETER Name
+        Friendly name (e.g. "GitHub").
+    .PARAMETER SecretId
+        UUID of the secret in Bitwarden Secrets Manager.
+    .PARAMETER Env
+        Hashtable mapping env-var names to values. Use the literal '$secret'
+        to inject the secret value, or any other string to set as-is.
+    .PARAMETER Path
+        Override save path. Defaults to the loaded path or ~/.git-init.json.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]    $Name,
+        [Parameter(Mandatory)] [string]    $SecretId,
+        [Parameter(Mandatory)] [hashtable] $Env,
+        [string]                            $Path
+    )
+    $existing = @($script:KeyMap | Where-Object { $_.Name -ne $Name })
+    $script:KeyMap = $existing + @(@{ Name = $Name; SecretId = $SecretId; Env = $Env })
+    Save-APIKeysConfig -Path $Path
+    Write-Host "Added/updated key '$Name'."
+}
+
+function Remove-APIKey {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $Name,
+        [string]                          $Path
+    )
+    $script:KeyMap = @($script:KeyMap | Where-Object { $_.Name -ne $Name })
+    Save-APIKeysConfig -Path $Path
+    Write-Host "Removed key '$Name'."
+}
+
+function Set-APIKeysConfigField {
+    <#
+    .SYNOPSIS
+        Update a top-level config field and persist.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [ValidateSet('BwsCliPath','BwsTokenItem')]
+        [string] $Field,
+        [Parameter(Mandatory)] [string] $Value,
+        [string] $Path
+    )
+    if ($Field -eq 'BwsCliPath')   { $script:BwsCliPath   = $Value }
+    if ($Field -eq 'BwsTokenItem') { $script:BwsTokenItem = $Value }
+    Save-APIKeysConfig -Path $Path
+    Write-Host "Set $Field = $Value"
 }
 
 # endregion
@@ -343,4 +485,9 @@ function Clear-APIKeyEnv {
 # endregion
 
 Set-Alias -Name load_keys -Value Set-AllAPIKeys
-Export-ModuleMember -Function Get-BwsSecretValue, Get-APIKeyMap, Set-AllAPIKeys, Clear-APIKeyEnv, Set-APIKeysConfig, Import-APIKeysConfig, Connect-Bitwarden -Alias load_keys
+Export-ModuleMember -Function `
+    Get-BwsSecretValue, Get-APIKeyMap, Set-AllAPIKeys, Clear-APIKeyEnv, `
+    Set-APIKeysConfig, Import-APIKeysConfig, Connect-Bitwarden, `
+    Show-APIKeysConfig, Save-APIKeysConfig, Get-APIKeysConfigPath, `
+    Initialize-APIKeysConfigFile, Add-APIKey, Remove-APIKey, Set-APIKeysConfigField `
+    -Alias load_keys

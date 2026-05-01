@@ -22,6 +22,28 @@ $configCandidates = @(
 
 $configPath = if ($configCandidates) { $configCandidates[0] } else { $null }
 
+if (-not $configPath) {
+    Write-Host "No git-init config found. Let's set one up." -ForegroundColor Cyan
+    $defaultItem = 'Bitwarden Secrets Manager Service Account'
+    $itemInput = Read-Host "Bitwarden vault item (name or UUID) holding BWS access token [$defaultItem]"
+    if ([string]::IsNullOrWhiteSpace($itemInput)) { $itemInput = $defaultItem }
+
+    $cliInput = Read-Host "BWS CLI path [bws]"
+    if ([string]::IsNullOrWhiteSpace($cliInput)) { $cliInput = 'bws' }
+
+    Write-Host "Your KeyMap needs at least a 'GitHub' entry mapping to GITHUB_ACCESS_TOKEN."
+    Write-Host "List BWS secrets with: bws secret list"
+    $ghId = Read-Host 'GitHub PAT secret UUID in BWS'
+
+    $defaultPath = Join-Path $HOME '.git-init.json'
+    $pathInput = Read-Host "Save config to [$defaultPath]"
+    if ([string]::IsNullOrWhiteSpace($pathInput)) { $pathInput = $defaultPath }
+
+    Initialize-APIKeysConfigFile -Path $pathInput -BwsTokenItem $itemInput -BwsCliPath $cliInput
+    Add-APIKey -Name 'GitHub' -SecretId $ghId -Env @{ GITHUB_ACCESS_TOKEN = '$secret' } -Path $pathInput
+    $configPath = $pathInput
+}
+
 if ($configPath) {
     Write-Host "Loading configuration from $configPath..."
     Import-APIKeysConfig -Path $configPath
@@ -59,7 +81,7 @@ if ($configPath) {
     }
 }
 else {
-    Write-Warning "Configuration file not found. Tried: \$env:GIT_INIT_CONFIG, $ScriptDir/config.json, $HOME/.git-init.json, $ScriptDir/config.psd1, $HOME/.git-init.psd1. API keys will not be loaded."
+    Write-Warning "Configuration file not loaded. API keys will not be available."
 }
 
 # Verify GitHub Token

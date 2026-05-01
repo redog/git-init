@@ -20,7 +20,12 @@ Both implementations read the same configuration file. Lookup order:
 3.  `<repo>/config.json`
 4.  `<repo>/config.psd1` or `~/.git-init.psd1` (PowerShell legacy, still supported)
 
-Copy `config.sample.json` to `config.json` and fill in your IDs:
+**You don't need to author this file by hand.** Run `init.sh` or `init.ps1`
+with no existing config and it will prompt you for the BWS token-item and your
+GitHub PAT secret UUID, then write `~/.git-init.json` for you. From there you
+manage the file with shell/PS functions — never with a text editor.
+
+Copy `config.sample.json` to `config.json` only if you prefer a static template:
 
 ```json
 {
@@ -92,6 +97,12 @@ Exposed cmdlets after sourcing:
 | `Update-VaultAPIKey`         | Update a secret in BWS and reload it locally.        |
 | `Get-APIKeyMap`              | Print the loaded key map.                            |
 | `Connect-Bitwarden`          | Ensure `bw` is logged-in and unlocked.               |
+| `Initialize-APIKeysConfigFile -Path -BwsTokenItem -BwsCliPath` | Create a new config file. |
+| `Add-APIKey -Name -SecretId -Env @{...}` | Add/update a KeyMap entry and persist.    |
+| `Remove-APIKey -Name`        | Drop a KeyMap entry and persist.                     |
+| `Set-APIKeysConfigField -Field -Value` | Set `BwsCliPath` / `BwsTokenItem`.         |
+| `Show-APIKeysConfig`         | Dump current config (path + map).                    |
+| `Save-APIKeysConfig [-Path]` | Persist current in-memory config.                    |
 | `Get-GHUser` / `Get-GHRepositories` / `New-GHRepository` | GitHub helpers. |
 
 ---
@@ -130,11 +141,30 @@ Exposed functions after sourcing:
 | `gi_update_key <name> [value]`    | Update a secret in BWS and reload it locally.        |
 | `gi_list_keys`                    | List `Name`, `SecretId`, env vars per entry.         |
 | `gi_get_secret <secret-id>`       | Fetch a single value from BWS.                       |
+| `gi_config_init [path]`           | Interactively create a new config file.              |
+| `gi_config_show`                  | Pretty-print the current config + path.              |
+| `gi_config_set <field> <value>`   | Update `BwsCliPath` or `BwsTokenItem` and persist.   |
+| `gi_config_add_key [name] [id] [VAR\|VAR=value] [...]` | Add/update a KeyMap entry. Prompts for missing args. |
+| `gi_config_remove_key <name>`     | Drop a KeyMap entry by name.                         |
 | `gi_connect_bitwarden`            | Ensure `bw` is logged-in and unlocked.               |
 | `gi_get_bws_token`                | Bootstrap `BWS_ACCESS_TOKEN` from the bw vault item. |
 | `gi_gh_user` / `gi_gh_repos` / `gi_gh_new_repo <name>` | GitHub helpers.                |
 | `gi_init_local_repo <repo> <gh-user> <full-name> <email>` | Local init + first push. |
 | `gi_menu`                         | Interactive create/clone menu.                       |
+
+Examples:
+
+```bash
+# Add a key. Default value '$secret' gets replaced with the BWS lookup.
+gi_config_add_key OpenAI fbe0690e-fb43-4e91-b49c-b0b50039847a OPENAI_API_KEY
+
+# One secret, multiple env vars (one with a literal flag).
+gi_config_add_key LangSmith ad3f662b-9c78-4d22-9e15-b2c70147eabc \
+    LANGCHAIN_API_KEY LANGSMITH_API_KEY LANGCHAIN_TRACING_V2=true
+
+gi_config_set BwsTokenItem 'My Token Item'
+gi_config_remove_key OpenAI
+```
 
 ### Sourcing safety
 

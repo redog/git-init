@@ -82,6 +82,180 @@ gi_config_get() {
   echo "$_GI_CONFIG_JSON" | jq -r "$1"
 }
 
+gi_config_default_path() {
+  if [[ -n "${GIT_INIT_CONFIG:-}" ]]; then
+    echo "${GIT_INIT_CONFIG}"
+  else
+    echo "$HOME/.git-init.json"
+  fi
+}
+
+# Persist the in-memory config JSON to disk.
+# Usage: gi_config_write <json-content> [path]
+# If <path> is omitted, uses $_GI_CONFIG_PATH or gi_config_default_path.
+# Note: takes content as an argument (not stdin) so callers can use it
+# without a pipeline, which would put the function in a subshell and
+# lose the _GI_CONFIG_* assignments.
+gi_config_write() {
+  local content="${1:-}"
+  local path="${2:-${_GI_CONFIG_PATH:-$(gi_config_default_path)}}"
+  [[ -n "$content" ]] || { echo "gi_config_write: content required" >&2; return 1; }
+  if ! printf '%s' "$content" | jq empty 2>/dev/null; then
+    echo "Refusing to write invalid JSON to $path." >&2
+    return 1
+  fi
+  mkdir -p "$(dirname "$path")"
+  local tmp
+  tmp=$(mktemp "$path.XXXXXX") || return 1
+  printf '%s\n' "$content" > "$tmp"
+  chmod 600 "$tmp" 2>/dev/null || true
+  mv "$tmp" "$path"
+  _GI_CONFIG_PATH="$path"
+  _GI_CONFIG_JSON="$content"
+  echo "Wrote $path" >&2
+}
+
+gi_config_show() {
+  if [[ -z "$_GI_CONFIG_JSON" ]]; then
+    gi_load_config 2>/dev/null || { echo "No config loaded." >&2; return 1; }
+  fi
+  echo "Path: $_GI_CONFIG_PATH" >&2
+  echo "$_GI_CONFIG_JSON" | jq .
+}
+
+gi_config_init() {
+  # Interactive bootstrap. Optional arg: target path.
+  local target="${1:-}"
+  [[ -z "$target" ]] && target=$(gi_config_default_path)
+
+  if [[ -f "$target" ]]; then
+    echo "Config already exists at $target. Use gi_config_add_key / gi_config_set to modify it." >&2
+    return 1
+  fi
+
+  echo "Setting up a new git-init configuration at $target" >&2
+
+  local item cli gh_id
+  read -rp "Bitwarden vault item (name or UUID) holding the BWS access token [Bitwarden Secrets Manager Service Account]: " item
+  item=${item:-Bitwarden Secrets Manager Service Account}
+
+  read -rp "BWS CLI executable [bws]: " cli
+  cli=${cli:-bws}
+
+  echo "" >&2
+  echo "Your KeyMap needs at least a 'GitHub' entry mapping to GITHUB_ACCESS_TOKEN." >&2
+  echo "List BWS secrets with: bws secret list" >&2
+  read -rp "GitHub PAT secret UUID in BWS: " gh_id
+
+  local config
+  config=$(jq -n \
+    --arg item "$item" \
+    --arg cli  "$cli" \
+    --arg gh   "$gh_id" \
+    '{
+      BwsCliPath:   $cli,
+      BwsTokenItem: $item,
+      KeyMap: [
+        { Name: "GitHub", SecretId: $gh, Env: { GITHUB_ACCESS_TOKEN: "$secret" } }
+      ]
+    }')
+  gi_config_write "$config" "$target"
+}
+
+gi_config_set() {
+  # gi_config_set <field> <value>  (field: BwsCliPath | BwsTokenItem)
+  local field="${1:-}" value="${2:-}"
+  [[ -n "$field" && -n "$value" ]] || { echo "Usage: gi_config_set <BwsCliPath|BwsTokenItem> <value>" >&2; return 1; }
+  case "$field" in
+    BwsCliPath|BwsTokenItem) ;;
+    *) echo "Unknown field '$field'. Valid: BwsCliPath, BwsTokenItem." >&2; return 1 ;;
+  esac
+
+  if [[ -z "$_GI_CONFIG_JSON" ]]; then
+    gi_load_config 2>/dev/null \
+      || _GI_CONFIG_JSON=$(jq -n '{BwsCliPath:"bws", BwsTokenItem:"Bitwarden Secrets Manager Service Account", KeyMap: []}')
+  fi
+  local updated
+  updated=$(printf '%s' "$_GI_CONFIG_JSON" | jq --arg f "$field" --arg v "$value" '.[$f] = $v')
+  gi_config_write "$updated"
+  echo "Set $field = $value" >&2
+}
+
+gi_config_add_key() {
+  # gi_config_add_key [name] [secret-id] [env-var | env-var=value] [...]
+  # Prompts for any missing required argument. If only the env name is given,
+  # the value defaults to "$secret" (which gets replaced with the BWS value at load time).
+  local name="${1:-}" secret_id="${2:-}"
+  [[ $# -ge 1 ]] && shift
+  [[ $# -ge 1 ]] && shift
+
+  if [[ -z "$name" ]]; then
+    read -rp "Key name (e.g. GitHub, OpenAI): " name
+  fi
+  [[ -n "$name" ]] || { echo "Name is required." >&2; return 1; }
+
+  if [[ -z "$secret_id" ]]; then
+    read -rp "BWS secret UUID for '$name': " secret_id
+  fi
+  [[ -n "$secret_id" ]] || { echo "SecretId is required." >&2; return 1; }
+
+  local env_specs=("$@")
+  if [[ ${#env_specs[@]} -eq 0 ]]; then
+    local default_var
+    case "$name" in
+      [Gg]it[Hh]ub)        default_var="GITHUB_ACCESS_TOKEN" ;;
+      [Oo]pen[Aa][Ii])     default_var="OPENAI_API_KEY" ;;
+      [Aa]nthropic)        default_var="ANTHROPIC_API_KEY" ;;
+      *)                   default_var="$(echo "$name" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9' '_')_API_KEY" ;;
+    esac
+    local var
+    read -rp "Environment variable name [$default_var]: " var
+    env_specs=("${var:-$default_var}")
+  fi
+
+  local env_json='{}' pair key val
+  for pair in "${env_specs[@]}"; do
+    if [[ "$pair" == *=* ]]; then
+      key="${pair%%=*}"
+      val="${pair#*=}"
+    else
+      key="$pair"
+      val='$secret'
+    fi
+    env_json=$(echo "$env_json" | jq --arg k "$key" --arg v "$val" '. + {($k): $v}')
+  done
+
+  if [[ -z "$_GI_CONFIG_JSON" ]]; then
+    gi_load_config 2>/dev/null \
+      || _GI_CONFIG_JSON=$(jq -n '{BwsCliPath:"bws", BwsTokenItem:"Bitwarden Secrets Manager Service Account", KeyMap: []}')
+  fi
+
+  local updated
+  updated=$(printf '%s' "$_GI_CONFIG_JSON" | jq \
+    --arg name "$name" \
+    --arg sid  "$secret_id" \
+    --argjson env "$env_json" '
+      .KeyMap = (
+        (.KeyMap // []) | map(select(.Name != $name)) +
+        [{ Name: $name, SecretId: $sid, Env: $env }]
+      )
+    ')
+  gi_config_write "$updated"
+  echo "Added/updated '$name' in $_GI_CONFIG_PATH." >&2
+}
+
+gi_config_remove_key() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || { echo "Usage: gi_config_remove_key <name>" >&2; return 1; }
+  [[ -n "$_GI_CONFIG_JSON" ]] || gi_load_config || return 1
+
+  local updated
+  updated=$(printf '%s' "$_GI_CONFIG_JSON" \
+    | jq --arg n "$name" '.KeyMap = (.KeyMap | map(select(.Name != $n)))')
+  gi_config_write "$updated"
+  echo "Removed '$name'." >&2
+}
+
 #==============================================================================
 # bitwarden / bws bootstrap
 #==============================================================================
@@ -507,18 +681,29 @@ Options:
   -h, --help      Show this help.
 
 Functions exposed when sourced:
-  gi_load_keys [--only N1,N2] [--except N1,N2] [--quiet]
-  gi_clear_keys [--all]
-  gi_update_key <name> [new-value]
-  gi_list_keys
-  gi_get_secret <secret-id>
-  gi_connect_bitwarden
-  gi_get_bws_token
-  gi_gh_user
-  gi_gh_repos
-  gi_gh_new_repo <name>
-  gi_init_local_repo <repo> <gh-username> <full-name> <email>
-  gi_menu
+
+  Key loading / management:
+    gi_load_keys [--only N1,N2] [--except N1,N2] [--quiet]
+    gi_clear_keys [--all]
+    gi_update_key <name> [new-value]
+    gi_list_keys
+    gi_get_secret <secret-id>
+
+  Config management (no JSON editing required):
+    gi_config_init [path]
+    gi_config_show
+    gi_config_set <BwsCliPath|BwsTokenItem> <value>
+    gi_config_add_key [name] [secret-id] [VAR | VAR=value] [...]
+    gi_config_remove_key <name>
+
+  Bitwarden / GitHub helpers:
+    gi_connect_bitwarden
+    gi_get_bws_token
+    gi_gh_user
+    gi_gh_repos
+    gi_gh_new_repo <name>
+    gi_init_local_repo <repo> <gh-username> <full-name> <email>
+    gi_menu
 EOF
 }
 
@@ -541,7 +726,12 @@ _gi_main_body() {
     command -v "$cmd" &>/dev/null || { echo "Error: $cmd command not found." >&2; return 1; }
   done
 
-  gi_load_config || return 1
+  if ! gi_load_config 2>/dev/null; then
+    echo "No git-init config found at \$GIT_INIT_CONFIG / ~/.git-init.json / $(gi_script_dir)/config.json."
+    echo "Let's set one up."
+    gi_config_init || return 1
+    gi_load_config || return 1
+  fi
   echo "Loaded configuration from $_GI_CONFIG_PATH."
 
   local should_load=0
@@ -578,13 +768,21 @@ _gi_main_body() {
 }
 
 # Wrapper that always restores caller's shell options, even on failure paths.
+# Note: don't use $(set +o) — bash clears -e inside command-substitution subshells
+# (non-POSIX behavior), which would make us "restore" errexit-off when the caller
+# actually had errexit on. Inspect $- and shopt -qo directly instead.
 _gi_main() {
-  local _saved rc=0
-  _saved="$(set +o)"
+  local _e=0 _u=0 _p=0 rc=0
+  [[ $- == *e* ]] && _e=1
+  [[ $- == *u* ]] && _u=1
+  shopt -qo pipefail 2>/dev/null && _p=1
+
   _gi_main_body "$@" || rc=$?
-  # Defensive: explicitly clear strict opts before eval, in case _saved is empty.
+
   set +e +u +o pipefail 2>/dev/null || true
-  eval "$_saved"
+  (( _e )) && set -e
+  (( _u )) && set -u
+  (( _p )) && set -o pipefail
   return "$rc"
 }
 
