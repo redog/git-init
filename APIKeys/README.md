@@ -2,7 +2,9 @@
 
 The **APIKeys** module manages the secure retrieval and injection of API keys and secrets from Bitwarden Secrets Manager (BWS) into your current PowerShell session.
 
-It is designed to be configured via a PowerShell Data File (`.psd1`) which maps local environment variables to secrets stored in Bitwarden.
+It reads a JSON configuration file (`config.json`, shared with the bash `init.sh`)
+that maps local environment variables to secrets stored in Bitwarden. PowerShell
+Data Files (`.psd1`) are still accepted for backwards compatibility.
 
 ## Features
 
@@ -15,11 +17,11 @@ It is designed to be configured via a PowerShell Data File (`.psd1`) which maps 
 
 The module is configured using a hashtable, typically loaded from a `.psd1` file.
 
-### Config File Structure (`config.psd1`)
+### Config File Structure (`config.json`)
 
-See `config.sample.psd1` for a complete example.
+See the repo-root `config.sample.json` for a complete example.
 
-The configuration file must return a hashtable with the following keys:
+The configuration file must contain an object with the following keys:
 
 - **`BwsCliPath`** (Optional): Path to the `bws` executable. Defaults to `bws`.
 - **`BwsTokenItem`** (Optional): The Name or ID of the item in your Bitwarden Vault that contains the BWS Access Token. Defaults to "Bitwarden Secrets Manager Service Account".
@@ -37,15 +39,15 @@ Each entry in `KeyMap` should have:
 
 **Example:**
 
-```powershell
-@{
-    KeyMap = @(
-        @{
-            Name     = 'GitHub'
-            SecretId = '857d0c2c-cfe0-4e6d-995c-b1690020f8fb'
-            Env      = @{ GITHUB_ACCESS_TOKEN = '$secret' }
-        }
-    )
+```json
+{
+  "KeyMap": [
+    {
+      "Name": "GitHub",
+      "SecretId": "857d0c2c-cfe0-4e6d-995c-b1690020f8fb",
+      "Env": { "GITHUB_ACCESS_TOKEN": "$secret" }
+    }
+  ]
 }
 ```
 
@@ -53,10 +55,10 @@ Each entry in `KeyMap` should have:
 
 ### `Import-APIKeysConfig`
 
-Loads configuration from a `.psd1` file.
+Loads configuration from a `.json` (canonical) or `.psd1` (legacy) file.
 
 ```powershell
-Import-APIKeysConfig -Path "./config.psd1"
+Import-APIKeysConfig -Path "./config.json"
 ```
 
 ### `Set-APIKeysConfig`

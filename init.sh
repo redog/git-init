@@ -1,93 +1,351 @@
 #!/usr/bin/env bash
+# git-init: bootstrap GitHub repos with Bitwarden-managed secrets.
+#
+# Run executed for the interactive menu, or source for the env-loading flow plus
+# the gi_* helper functions (load/clear/update keys, GitHub API helpers, etc.).
 
+GI_VERSION="0.2.0"
 MYINIT="git-init"
-choice=-1
 
-# Determine if the script was sourced or executed
-sourced=0
-[[ ${BASH_SOURCE[0]} != "$0" ]] && sourced=1
+# Sourced-vs-executed detection.
+_GI_SOURCED=0
+[[ ${BASH_SOURCE[0]} != "${0:-}" ]] && _GI_SOURCED=1
 
-if (( ! sourced )); then
-  echo "Tip: run 'source init.sh' (or 'source <(curl -sS .../init.sh)') to keep variables in your shell."
+if (( ! _GI_SOURCED )); then
+  echo "Tip: run 'source init.sh' (or 'source <(curl -sS .../init.sh)') to keep variables and helper functions in your shell."
 fi
 
-# Exit or return based on invocation
-safe_exit() {
+#==============================================================================
+# common helpers
+#==============================================================================
+
+gi_safe_exit() {
   local code=${1:-0}
-  if (( sourced )); then
+  if (( _GI_SOURCED )); then
     return "$code"
   else
     exit "$code"
   fi
 }
 
-# Print an error message then exit/return with the given status
-fail() {
+gi_fail() {
   local code=${1:-1}
-  shift
+  shift || true
   [[ $# -gt 0 ]] && echo "$*" >&2
-  safe_exit "$code"
+  return "$code"
 }
 
-choose() {
-  options=("$@")
-  for i in "${!options[@]}"; do
-    echo "[$i] ${options[i]}" >&2
-  done
+#==============================================================================
+# configuration
+#==============================================================================
 
-  while true; do
-    read -p "Please select: " choice
-    if [[ $choice =~ ^[0-9]+$ ]] && [[ $choice -ge 0 ]] && [[ $choice -lt ${#options[@]} ]]; then
-      echo "${options[$choice]}"
-      return
-    else
-      echo "That was not a valid choice!" >&2
-    fi
-  done
+_GI_CONFIG_JSON=""
+_GI_CONFIG_PATH=""
+
+gi_script_dir() {
+  cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
 }
 
-get_repositories() {
-  token="$1"
-#  username="$2"
-  if ! response=$(curl -H "Authorization: token ${token}" "https://api.github.com/user/repos" 2>&1); then
-    echo "Failed to fetch repositories." >&2
-    safe_exit 3
-  fi
-  echo "$response" | grep -o '"full_name":\s*"[^"]*"' | sed -E 's/"full_name":[[:space:]]*"([^"]*)"/\1/'
-}
-
-main() {
-  if (( sourced )); then
-    saved_opts="$(set +o)"
-  fi
-  set -euo pipefail
-
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-  # Load configuration for secret IDs
+gi_locate_config() {
   if [[ -n "${GIT_INIT_CONFIG:-}" && -f "${GIT_INIT_CONFIG}" ]]; then
-    source "${GIT_INIT_CONFIG}"
-  elif [[ -f "$HOME/.git-init.env" ]]; then
-    source "$HOME/.git-init.env"
-  elif [[ -f "${SCRIPT_DIR}/config.env" ]]; then
-    source "${SCRIPT_DIR}/config.env"
-  else
-    echo "Warning: config.env file not found." >&2
+    echo "${GIT_INIT_CONFIG}"; return 0
+  fi
+  if [[ -f "$HOME/.git-init.json" ]]; then
+    echo "$HOME/.git-init.json"; return 0
+  fi
+  local dir
+  dir="$(gi_script_dir)"
+  if [[ -f "$dir/config.json" ]]; then
+    echo "$dir/config.json"; return 0
+  fi
+  return 1
+}
+
+gi_load_config() {
+  local path
+  if ! path=$(gi_locate_config); then
+    gi_fail 1 "Config not found. Tried \$GIT_INIT_CONFIG, ~/.git-init.json, $(gi_script_dir)/config.json"
+    return 1
+  fi
+  _GI_CONFIG_PATH="$path"
+  _GI_CONFIG_JSON=$(cat "$path") || return 1
+  if ! echo "$_GI_CONFIG_JSON" | jq empty 2>/dev/null; then
+    gi_fail 1 "Invalid JSON in config: $path"
+    return 1
+  fi
+  return 0
+}
+
+gi_config_get() {
+  # Usage: gi_config_get '<jq filter>'
+  [[ -n "$_GI_CONFIG_JSON" ]] || gi_load_config || return 1
+  echo "$_GI_CONFIG_JSON" | jq -r "$1"
+}
+
+#==============================================================================
+# bitwarden / bws bootstrap
+#==============================================================================
+
+_gi_bws() {
+  local cli
+  cli=$(gi_config_get '.BwsCliPath // "bws"')
+  command "$cli" "$@"
+}
+
+gi_connect_bitwarden() {
+  command -v bw &>/dev/null || { echo "Bitwarden CLI 'bw' not found in PATH." >&2; return 1; }
+
+  local status
+  status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo "")
+
+  if [[ "$status" == "unauthenticated" || -z "$status" ]]; then
+    if [[ -n "${BW_CLIENTID:-}" && -n "${BW_CLIENTSECRET:-}" ]]; then
+      echo "🤖 Logging in to Bitwarden CLI with API key..."
+      BW_CLIENTID="$BW_CLIENTID" BW_CLIENTSECRET="$BW_CLIENTSECRET" bw login --apikey \
+        || { echo "API key login failed." >&2; return 1; }
+    else
+      echo "👤 Logging in to Bitwarden CLI..."
+      bw login || { echo "Interactive login failed." >&2; return 1; }
+    fi
+    status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo "")
   fi
 
-  # Ensure required commands exist
-  for cmd in bws bw jq curl git; do
-    if ! command -v "$cmd" &>/dev/null; then
-      fail 1 "Error: $cmd command not found."
-    fi
+  if [[ "$status" == "locked" && -z "${BW_SESSION:-}" ]]; then
+    echo "🔓 Unlocking Bitwarden vault..."
+    local session
+    session=$(bw unlock --raw) || { echo "Unlock failed." >&2; return 1; }
+    [[ -n "$session" ]] || { echo "Empty session returned by bw unlock." >&2; return 1; }
+    export BW_SESSION="$session"
+    echo "✅ Vault unlocked."
+  fi
+  return 0
+}
+
+gi_get_bws_token() {
+  if [[ -n "${BWS_ACCESS_TOKEN:-}" ]]; then
+    return 0
+  fi
+
+  gi_connect_bitwarden || return 1
+
+  local item_ref token_item token
+  item_ref=$(gi_config_get '.BwsTokenItem // ""')
+  [[ -n "$item_ref" ]] || { echo "BwsTokenItem not configured in $_GI_CONFIG_PATH" >&2; return 1; }
+
+  token_item=$(bw get item "$item_ref" 2>/dev/null) \
+    || { echo "Could not fetch bw item '$item_ref'." >&2; return 1; }
+
+  token=$(echo "$token_item" | jq -r '.notes // empty')
+  if [[ -z "$token" ]]; then
+    token=$(echo "$token_item" | jq -r '(.fields // [])[] | select(.name=="token") | .value' | head -n1)
+  fi
+  if [[ -z "$token" ]]; then
+    token=$(echo "$token_item" | jq -r '.login.password // empty')
+  fi
+
+  if [[ -z "$token" ]]; then
+    echo "Could not extract BWS access token from item '$item_ref' (notes / 'token' field / login.password)." >&2
+    return 1
+  fi
+
+  export BWS_ACCESS_TOKEN="$token"
+
+  local cli
+  cli=$(gi_config_get '.BwsCliPath // "bws"')
+  command -v "$cli" &>/dev/null \
+    || { echo "Bitwarden Secrets Manager CLI '$cli' not found in PATH." >&2; return 1; }
+  return 0
+}
+
+#==============================================================================
+# secrets / key map
+#==============================================================================
+
+gi_get_secret() {
+  # Usage: gi_get_secret <secret-id>
+  local id="$1"
+  [[ -n "$id" ]] || { echo "Usage: gi_get_secret <secret-id>" >&2; return 1; }
+  local out
+  out=$(_gi_bws secret get "$id" -o json 2>/dev/null) || return 1
+  echo "$out" | jq -r '.value'
+}
+
+gi_list_keys() {
+  [[ -n "$_GI_CONFIG_JSON" ]] || gi_load_config || return 1
+  echo "$_GI_CONFIG_JSON" | jq -r '.KeyMap[] | "\(.Name)\t\(.SecretId)\t\(.Env | keys | join(","))"'
+}
+
+_gi_in_csv() {
+  # _gi_in_csv "needle" "a,b,c"
+  local needle="$1" csv="$2"
+  [[ ",$csv," == *",$needle,"* ]]
+}
+
+gi_load_keys() {
+  local only="" except="" quiet=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --only)   only="$2"; shift 2 ;;
+      --except) except="$2"; shift 2 ;;
+      --quiet)  quiet=1; shift ;;
+      -h|--help)
+        cat <<EOF
+Usage: gi_load_keys [--only N1,N2] [--except N1,N2] [--quiet]
+EOF
+        return 0 ;;
+      *) echo "gi_load_keys: unknown option '$1'" >&2; return 1 ;;
+    esac
   done
 
-  helper_script="${HOME}/.config/git-credential-env"
-  if [[ ! -f $helper_script ]]; then
-    mkdir -p "${HOME}/.config"
-    cat >"$helper_script" <<'EOF'
+  [[ -n "$_GI_CONFIG_JSON" ]] || gi_load_config || return 1
+  gi_get_bws_token || return 1
+
+  local entries
+  entries=$(echo "$_GI_CONFIG_JSON" | jq -c '.KeyMap[]?')
+  if [[ -z "$entries" ]]; then
+    echo "KeyMap is empty in $_GI_CONFIG_PATH." >&2
+    return 1
+  fi
+
+  local ok=0 fail=0
+  while IFS= read -r entry; do
+    local name secret_id
+    name=$(echo "$entry" | jq -r '.Name')
+    secret_id=$(echo "$entry" | jq -r '.SecretId')
+
+    if [[ -n "$only" ]] && ! _gi_in_csv "$name" "$only"; then continue; fi
+    if [[ -n "$except" ]] && _gi_in_csv "$name" "$except"; then continue; fi
+
+    local secret
+    if ! secret=$(gi_get_secret "$secret_id") || [[ -z "$secret" ]]; then
+      echo "Could not load $name (SecretId: $secret_id)." >&2
+      ((fail++)) || true
+      continue
+    fi
+
+    while IFS=$'\t' read -r env_name value; do
+      [[ -z "$env_name" ]] && continue
+      if [[ "$value" == '$secret' ]]; then
+        value="$secret"
+      fi
+      export "$env_name=$value"
+    done < <(echo "$entry" | jq -r '.Env | to_entries[] | "\(.key)\t\(.value)"')
+
+    (( quiet )) || echo "$name loaded."
+    ((ok++)) || true
+  done <<< "$entries"
+
+  (( quiet )) || echo "API keys loaded. Success: $ok  Failed: $fail"
+  (( fail == 0 ))
+}
+
+gi_clear_keys() {
+  local clear_session=0
+  [[ "${1:-}" == "--all" ]] && clear_session=1
+
+  [[ -n "$_GI_CONFIG_JSON" ]] || gi_load_config || return 1
+
+  while IFS= read -r env_name; do
+    [[ -n "$env_name" ]] && unset "$env_name"
+  done < <(echo "$_GI_CONFIG_JSON" | jq -r '.KeyMap[].Env | keys[]')
+
+  if (( clear_session )); then
+    unset BW_SESSION BWS_ACCESS_TOKEN
+  fi
+}
+
+gi_update_key() {
+  local name="$1" new_value="${2:-}"
+  [[ -n "$name" ]] || { echo "Usage: gi_update_key <name> [value]" >&2; return 1; }
+
+  if [[ -z "$new_value" ]]; then
+    read -r -s -p "Enter new value for $name: " new_value
+    echo
+  fi
+
+  [[ -n "$_GI_CONFIG_JSON" ]] || gi_load_config || return 1
+
+  local secret_id
+  secret_id=$(echo "$_GI_CONFIG_JSON" | jq -r --arg n "$name" '.KeyMap[] | select(.Name==$n) | .SecretId')
+  [[ -n "$secret_id" ]] || { echo "Key '$name' not found in config." >&2; return 1; }
+
+  gi_get_bws_token || return 1
+
+  echo "Updating secret '$name' ($secret_id) in Bitwarden Secrets Manager..."
+  local out
+  if ! out=$(_gi_bws secret edit "$secret_id" --value "$new_value" -o json 2>&1); then
+    echo "Failed to update secret in BWS: $out" >&2
+    return 1
+  fi
+  echo "✅ Vault updated successfully for '$name'."
+
+  echo "🔄 Reloading '$name' into current environment..."
+  gi_load_keys --only "$name" --quiet || return 1
+  echo "🚀 Done. Your shell is using the new value."
+}
+
+#==============================================================================
+# github API
+#==============================================================================
+
+_gi_gh_curl() {
+  [[ -n "${GITHUB_ACCESS_TOKEN:-}" ]] || { echo "GITHUB_ACCESS_TOKEN is not set. Run gi_load_keys first." >&2; return 1; }
+  curl -fsSL \
+    -H "Authorization: Bearer $GITHUB_ACCESS_TOKEN" \
+    -H "Accept: application/vnd.github.v3+json" \
+    "$@"
+}
+
+gi_gh_user() {
+  _gi_gh_curl "https://api.github.com/user" | jq -r '.login'
+}
+
+gi_gh_repos() {
+  local page=1 per_page=100 response count
+  while :; do
+    response=$(_gi_gh_curl "https://api.github.com/user/repos?per_page=${per_page}&page=${page}") || return 1
+    count=$(echo "$response" | jq 'length')
+    [[ "$count" -eq 0 ]] && break
+    echo "$response" | jq -r '.[].full_name'
+    [[ "$count" -lt "$per_page" ]] && break
+    ((page++))
+  done
+}
+
+gi_gh_new_repo() {
+  local name="$1"
+  [[ -n "$name" ]] || { echo "Usage: gi_gh_new_repo <name>" >&2; return 1; }
+  [[ -n "${GITHUB_ACCESS_TOKEN:-}" ]] || { echo "GITHUB_ACCESS_TOKEN is not set." >&2; return 1; }
+
+  local body status response http_body
+  body=$(jq -n --arg n "$name" '{name:$n, description:"Created with git-init", private:true}')
+  response=$(curl -sSL -w "\n%{http_code}" \
+    -H "Authorization: Bearer $GITHUB_ACCESS_TOKEN" \
+    -H "Accept: application/vnd.github.v3+json" \
+    -d "$body" "https://api.github.com/user/repos")
+  status=$(echo "$response" | tail -n1)
+  http_body=$(echo "$response" | sed '$d')
+
+  case "$status" in
+    201) echo "$http_body" | jq -r '.full_name'; return 0 ;;
+    422) echo "Repository name '$name' already exists." >&2; return 1 ;;
+    *)   echo "Failed to create repository: HTTP $status" >&2
+         [[ -n "$http_body" ]] && echo "$http_body" >&2
+         return 1 ;;
+  esac
+}
+
+#==============================================================================
+# git credential helper
+#==============================================================================
+
+gi_ensure_credential_helper() {
+  local helper="$HOME/.config/git-credential-env"
+  [[ -f "$helper" ]] && return 0
+  mkdir -p "$HOME/.config"
+  cat >"$helper" <<'EOF'
 #!/usr/bin/env bash
-set -euo pipefail
+set -eu
 op=${1:-}
 while IFS= read -r line && [[ -n $line ]]; do :; done
 [[ $op == get ]] || exit 0
@@ -99,174 +357,239 @@ fi
 echo "username=x-access-token"
 echo "password=$token"
 EOF
-    chmod +x "$helper_script"
+  chmod +x "$helper"
+}
+
+gi_credential_helper_arg() {
+  local helper="$HOME/.config/git-credential-env"
+  case "$OSTYPE" in
+    darwin*)        echo "osxkeychain" ;;
+    msys*|cygwin*)  echo "manager" ;;
+    *)              echo "$helper" ;;
+  esac
+}
+
+#==============================================================================
+# local repository init
+#==============================================================================
+
+gi_init_local_repo() {
+  local repo_name="$1" username="$2" full_name="$3" email="$4"
+  [[ -n "$repo_name" && -n "$username" && -n "$full_name" && -n "$email" ]] \
+    || { echo "Usage: gi_init_local_repo <repo> <gh-username> <full-name> <email>" >&2; return 1; }
+  [[ -d "$repo_name" ]] && { echo "Directory '$repo_name' already exists." >&2; return 1; }
+
+  mkdir "$repo_name" || return 1
+  cd "$repo_name" || return 1
+
+  git init
+  git config user.name "$full_name"
+  git config user.email "$email"
+  git config credential.helper "$(gi_credential_helper_arg)"
+
+  git remote add origin "https://github.com/$username/$repo_name.git"
+
+  echo "$repo_name by $username" > README.md
+  curl -fsSL https://www.gnu.org/licenses/gpl-3.0.txt > LICENSE
+
+  git add .
+  git commit -m "Initial commit"
+  git branch -M main
+  git push --set-upstream origin main
+}
+
+#==============================================================================
+# interactive menu
+#==============================================================================
+
+gi_flow_create() {
+  local reconfigure="$1"
+  local repo_name username name email
+
+  read -rp "Enter the name for the new repository: " repo_name
+  [[ -n "$repo_name" ]] || { echo "Repository name cannot be empty." >&2; return 1; }
+
+  if (( ! reconfigure )); then
+    username=$(gi_gh_user 2>/dev/null || true)
   fi
+  [[ -n "${username:-}" ]] || read -rp "Enter your GitHub username: " username
 
-  ensure_logged_in() {
-    local status
-    status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null)
-    if [[ "$status" == "unauthenticated" || -z "$status" ]]; then
-      if [[ -z "${BW_CLIENTSECRET:-}" ]]; then
-        read -s -p "Enter BW client secret (leave blank for email/password login): " BW_CLIENTSECRET
-        echo
-      fi
-      if [[ -n "${BW_CLIENTSECRET:-}" && -n "${BW_CLIENTID:-}" ]]; then
-        echo "🔑 Logging in to Bitwarden CLI using API key..."
-        BW_CLIENTSECRET="$BW_CLIENTSECRET" bw login --apikey
-      else
-        echo "🔑 Logging in to Bitwarden CLI..."
-        bw login
-      fi
-      unset BW_SESSION
-      ensure_session
-    fi
-  }
-
-  ensure_session() {
-    if [[ -n "${BW_SESSION:-}" ]]; then
-      echo "✅ Vault is already unlocked."
-      return 0
-    fi
-
-    local status
-    status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null)
-    if [[ "$status" == "unauthenticated" || -z "$status" ]]; then
-      ensure_logged_in || return 1
-      status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null)
-      if [[ "$status" == "unauthenticated" || -z "$status" ]]; then
-        echo "❌ Bitwarden CLI login failed." >&2
-        return 1
-      fi
-    fi
-
-    echo "🔐 Unlocking Bitwarden vault... please enter your master password:"
-    local session
-    session=$(bw unlock --raw)
-    if [[ $? -ne 0 || -z "$session" || "$session" == "You are not logged in."* ]]; then
-      echo "❌ Unlock failed. Please check your password." >&2
-      return 1
-    fi
-    export BW_SESSION="$session"
-    echo "✅ Vault unlocked successfully. Session key is now in your environment."
-  }
-
-  ensure_logged_in
-  if ! ensure_session; then
-    fail 1 "Failed to unlock Bitwarden vault"
+  if (( ! reconfigure )); then
+    name=$(git config --global user.name 2>/dev/null || true)
   fi
+  [[ -n "${name:-}" ]] || read -rp "Enter your full name: " name
 
-  # Retrieve BWS access token if missing
-  if [[ -z "${BWS_ACCESS_TOKEN:-}" ]]; then
-    echo "=> Retrieving BWS access token from Bitwarden..."
-    BWS_ACCESS_TOKEN=$(bw get password "$BWS_ACCESS_TOKEN_ID" --session "$BW_SESSION" 2>/dev/null)
-    if [[ -z "$BWS_ACCESS_TOKEN" ]]; then
-      fail 1 "Failed to retrieve BWS access token"
-    fi
-    export BWS_ACCESS_TOKEN
+  if (( ! reconfigure )); then
+    email=$(git config --global user.email 2>/dev/null || true)
   fi
+  [[ -n "${email:-}" ]] || read -rp "Enter your email address: " email
 
-  secret_data=$(bws secret get "$BW_API_KEY_ID" -o json 2>/dev/null)
-  if [[ $? -ne 0 || -z "$secret_data" ]]; then
-    fail 1 "Failed to retrieve secret with ID '$BW_API_KEY_ID'"
-  fi
-
-  BW_CLIENTSECRET=$(echo "$secret_data" | jq -r '.value')
-  if [[ -z "$BW_CLIENTSECRET" ]]; then
-    fail 1 "Could not extract client_secret from the secret data"
-  fi
-
-  ensure_logged_in
-  export BW_CLIENTID BW_CLIENTSECRET
-
-  # Fetch GitHub token using Bitwarden Secrets Manager
-  if [[ "$OSTYPE" == "darwin"* || "$OSTYPE" == "linux-gnu"* ]]; then
-    if ! pass=$(bws secret get "$GH_TOKEN_ID" -o json | jq -r '.value' 2>/dev/null); then
-      fail 1 "Failed to retrieve GitHub access token"
-    fi
-  elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
-    fail 4 "Windows not yet supported"
-  else
-    fail 5 "Unsupported OS"
-  fi
-
-  gitusername=$(git config --global user.github.login.name || true)
-  if [[ -z "$gitusername" ]]; then
-    read -p "Enter your GitHub username: " gitusername
-    git config --global user.github.login.name "$gitusername"
-  fi
-
-  email=$(git config --global user.email || echo "${gitusername}@users.noreply.github.com")
-  if [[ -z "$(git config --global user.email || true)" ]]; then
-    read -p "Enter your email [${gitusername}@users.noreply.github.com]: " email
-    email=${email:-"${gitusername}@users.noreply.github.com"}
-    git config --global user.email "$email"
-  fi
-
-  name=$(git config --global user.name || true)
-  if [[ -z "$name" ]]; then
-    read -p "Enter your Full Name: " name
-    git config --global user.name "$name"
-  fi
-
-  export GITHUB_ACCESS_TOKEN="$pass"
-  if [[ -z "$GITHUB_ACCESS_TOKEN" ]]; then
-    fail 6 "GitHub Access Token not set"
-  fi
-
-  echo ""
-  echo "What would you like to do?"
-  choose "Create a new repository" "Clone an existing repository"
-
-  if [[ $choice -eq 0 ]]; then
-    # Check if we're inside a git repository
-    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-      echo "Script is running from within a git repository.  Further cloning is not recommended."
-      echo "Please run this script from outside of a git repository."
-      fail 1
-    elif [[ -z "$SCRIPT_DIR" || "$SCRIPT_DIR" == "." ]]; then
-      git clone https://github.com/$gitusername/${MYINIT}
-    else
-      if [[ ! -d "$MYINIT" ]]; then
-        git clone https://github.com/$gitusername/${MYINIT} "$MYINIT"
-      fi
-    fi
-
-    bash ${MYINIT}/mkrepo.sh
-  else
-    repos=$(get_repositories "${GITHUB_ACCESS_TOKEN}")
-    if [[ -z "$repos" ]]; then
-      echo "No repositories found." >&2
-      safe_exit 0
-    fi
-    repo_array=()
-    while IFS= read -r line; do
-      repo_array+=("$line")
-    done <<< "$repos"
-
-    chosen_repo=$(choose "${repo_array[@]}")
-    helper_script="${HOME}/.config/git-credential-env"
-    git -c credential.helper="$helper_script" clone "https://github.com/${chosen_repo}.git"
-    cd "${chosen_repo#*/}" || fail 1
-    case "$OSTYPE" in
-      darwin*) git config credential.helper osxkeychain ;;
-      linux*)  git config credential.helper "$helper_script" ;;
-      msys*|cygwin*) git config credential.helper manager ;;
-      *) echo "Unsupported OS for credential helper config." ;;
-    esac
-
-    git config "remote.origin.url" "https://github.com/${chosen_repo}.git"
-  fi
-
-  unset IFS
-
-  if (( sourced )); then
-    eval "$saved_opts"
+  local full
+  if full=$(gi_gh_new_repo "$repo_name"); then
+    echo "Repository '$full' created successfully."
+    gi_init_local_repo "$repo_name" "$username" "$name" "$email"
   fi
 }
 
-if (( sourced )); then
-  main "$@" || return $?
-else
-  main "$@"
-fi
+gi_flow_clone() {
+  local repos
+  mapfile -t repos < <(gi_gh_repos | sort)
+  if [[ ${#repos[@]} -eq 0 ]]; then
+    echo "No repositories found." >&2
+    return 0
+  fi
 
+  echo "Select a repository to clone:"
+  local i
+  for i in "${!repos[@]}"; do
+    echo "  $((i+1)). ${repos[i]}"
+  done
+
+  local selection selected
+  while :; do
+    read -rp "Enter repository number (1-${#repos[@]}): " selection
+    if [[ "$selection" =~ ^[0-9]+$ ]] && (( selection >= 1 && selection <= ${#repos[@]} )); then
+      selected="${repos[selection-1]}"
+      break
+    fi
+    echo "Invalid selection." >&2
+  done
+
+  local helper_arg
+  helper_arg=$(gi_credential_helper_arg)
+
+  git -c credential.helper="$helper_arg" clone "https://github.com/${selected}.git" || return 1
+
+  local repo_name="${selected#*/}"
+  if [[ -d "$repo_name" ]]; then
+    cd "$repo_name" || return 1
+    git config credential.helper "$helper_arg"
+    git config remote.origin.url "https://github.com/${selected}.git"
+    echo "Clone complete. Credential helper configured."
+  fi
+}
+
+gi_menu() {
+  local reconfigure="${1:-0}"
+  echo ""
+  echo "What would you like to do?"
+  echo "  [1] Create a new repository"
+  echo "  [2] Clone an existing repository"
+  echo "  [3] Continue to shell"
+  local choice
+  read -rp "Please select [1-3]: " choice
+  case "$choice" in
+    1) gi_flow_create "$reconfigure" ;;
+    2) gi_flow_clone ;;
+    3) echo "Continuing to shell..." ;;
+    *) echo "Invalid choice." >&2; return 1 ;;
+  esac
+}
+
+#==============================================================================
+# entry point
+#==============================================================================
+
+gi_print_help() {
+  cat <<EOF
+git-init $GI_VERSION
+
+Usage:
+  source init.sh [--reload] [--reconfigure] [--no-menu]
+  ./init.sh     [--reload] [--reconfigure]
+
+Options:
+  --reload        Force reload of API keys even if env vars are already set.
+  --reconfigure   Re-prompt for git config (name, email, GitHub user) instead of
+                  reading existing values.
+  --no-menu       (sourced only) Set up keys/credential helper but skip the
+                  interactive menu.
+  -h, --help      Show this help.
+
+Functions exposed when sourced:
+  gi_load_keys [--only N1,N2] [--except N1,N2] [--quiet]
+  gi_clear_keys [--all]
+  gi_update_key <name> [new-value]
+  gi_list_keys
+  gi_get_secret <secret-id>
+  gi_connect_bitwarden
+  gi_get_bws_token
+  gi_gh_user
+  gi_gh_repos
+  gi_gh_new_repo <name>
+  gi_init_local_repo <repo> <gh-username> <full-name> <email>
+  gi_menu
+EOF
+}
+
+_gi_main_body() {
+  set -euo pipefail
+
+  local reconfigure=0 reload=0 no_menu=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --reconfigure) reconfigure=1; shift ;;
+      --reload)      reload=1; shift ;;
+      --no-menu)     no_menu=1; shift ;;
+      -h|--help)     gi_print_help; return 0 ;;
+      *) echo "Unknown argument: $1" >&2; gi_print_help >&2; return 2 ;;
+    esac
+  done
+
+  local cmd
+  for cmd in bws bw jq curl git; do
+    command -v "$cmd" &>/dev/null || { echo "Error: $cmd command not found." >&2; return 1; }
+  done
+
+  gi_load_config || return 1
+  echo "Loaded configuration from $_GI_CONFIG_PATH."
+
+  local should_load=0
+  if (( reload )); then
+    should_load=1
+  else
+    local ev
+    while IFS= read -r ev; do
+      [[ -n "$ev" ]] || continue
+      if [[ -z "${!ev:-}" ]]; then
+        should_load=1
+        break
+      fi
+    done < <(echo "$_GI_CONFIG_JSON" | jq -r '.KeyMap[].Env | keys[]')
+  fi
+
+  if (( should_load )); then
+    echo "Loading API Keys..."
+    gi_load_keys || return 1
+  else
+    echo "API Keys already loaded. Use --reload to force reload."
+  fi
+
+  [[ -n "${GITHUB_ACCESS_TOKEN:-}" ]] \
+    || { echo "GITHUB_ACCESS_TOKEN is not set after loading keys. Check your config's KeyMap." >&2; return 1; }
+
+  gi_ensure_credential_helper
+
+  if (( _GI_SOURCED && no_menu )); then
+    return 0
+  fi
+
+  gi_menu "$reconfigure"
+}
+
+# Wrapper that always restores caller's shell options, even on failure paths.
+_gi_main() {
+  local _saved rc=0
+  _saved="$(set +o)"
+  _gi_main_body "$@" || rc=$?
+  # Defensive: explicitly clear strict opts before eval, in case _saved is empty.
+  set +e +u +o pipefail 2>/dev/null || true
+  eval "$_saved"
+  return "$rc"
+}
+
+if (( _GI_SOURCED )); then
+  _gi_main "$@" || return $?
+else
+  _gi_main "$@"
+fi

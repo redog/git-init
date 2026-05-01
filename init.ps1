@@ -11,13 +11,18 @@ Import-Module (Join-Path $ScriptDir "APIKeys") -Force
 Import-Module (Join-Path $ScriptDir "GitInit") -Force
 Import-Module (Join-Path $ScriptDir "APIKeys" "KeyRotation") -Force
 
-# Load configuration
-$configPath = Join-Path $ScriptDir "config.psd1"
-if (-not (Test-Path $configPath)) {
-    $configPath = Join-Path $HOME ".git-init.psd1"
-}
+# Load configuration. JSON is canonical (shared with init.sh); .psd1 kept for back-compat.
+$configCandidates = @(
+    $env:GIT_INIT_CONFIG,
+    (Join-Path $ScriptDir 'config.json'),
+    (Join-Path $HOME    '.git-init.json'),
+    (Join-Path $ScriptDir 'config.psd1'),
+    (Join-Path $HOME    '.git-init.psd1')
+) | Where-Object { $_ -and (Test-Path $_) }
 
-if (Test-Path $configPath) {
+$configPath = if ($configCandidates) { $configCandidates[0] } else { $null }
+
+if ($configPath) {
     Write-Host "Loading configuration from $configPath..."
     Import-APIKeysConfig -Path $configPath
 
@@ -54,7 +59,7 @@ if (Test-Path $configPath) {
     }
 }
 else {
-    Write-Warning "Configuration file not found (checked '$($ScriptDir)/config.psd1' and '$HOME/.git-init.psd1'). API keys might not be loaded."
+    Write-Warning "Configuration file not found. Tried: \$env:GIT_INIT_CONFIG, $ScriptDir/config.json, $HOME/.git-init.json, $ScriptDir/config.psd1, $HOME/.git-init.psd1. API keys will not be loaded."
 }
 
 # Verify GitHub Token
