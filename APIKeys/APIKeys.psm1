@@ -72,16 +72,29 @@ function Import-APIKeysConfig {
         [string]$Path
     )
 
-    if (-not (Test-Path $Path)) {
-        throw "Configuration file not found: $Path"
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Configuration file not found (or not a file): $Path"
     }
 
     $config = $null
-    if ($Path -match '\.json$') {
-        $config = Get-Content -Raw -Path $Path | ConvertFrom-Json -AsHashtable
+    try {
+        if ($Path -match '\.json$') {
+            $raw = Get-Content -Raw -LiteralPath $Path
+            if ([string]::IsNullOrWhiteSpace($raw)) {
+                throw "Config file is empty: $Path"
+            }
+            $config = $raw | ConvertFrom-Json -AsHashtable
+        }
+        else {
+            $config = Import-PowerShellDataFile -LiteralPath $Path
+        }
     }
-    else {
-        $config = Import-PowerShellDataFile -Path $Path
+    catch {
+        throw "Failed to parse config file '$Path': $($_.Exception.Message)"
+    }
+
+    if ($null -eq $config -or -not ($config -is [System.Collections.IDictionary])) {
+        throw "Config file '$Path' did not produce an object/hashtable."
     }
 
     # Normalize KeyMap entries so each entry's Env is a hashtable. ConvertFrom-Json
