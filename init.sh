@@ -64,13 +64,17 @@ gi_locate_config() {
 gi_load_config() {
   local path
   if ! path=$(gi_locate_config); then
-    gi_fail 1 "Config not found. Tried \$GIT_INIT_CONFIG, ~/.git-init.json, $(gi_script_dir)/config.json"
+    return 1
+  fi
+  if [[ ! -s "$path" ]]; then
+    echo "Config file is empty: $path" >&2
     return 1
   fi
   _GI_CONFIG_PATH="$path"
   _GI_CONFIG_JSON=$(cat "$path") || return 1
-  if ! echo "$_GI_CONFIG_JSON" | jq empty 2>/dev/null; then
-    gi_fail 1 "Invalid JSON in config: $path"
+  # Require a JSON object (jq -e returns non-zero for null/empty/non-object).
+  if ! printf '%s' "$_GI_CONFIG_JSON" | jq -e 'type == "object"' >/dev/null 2>&1; then
+    echo "Config is not a JSON object: $path" >&2
     return 1
   fi
   return 0
@@ -95,21 +99,40 @@ gi_config_default_path() {
 # If <path> is omitted, uses $_GI_CONFIG_PATH or gi_config_default_path.
 # Note: takes content as an argument (not stdin) so callers can use it
 # without a pipeline, which would put the function in a subshell and
-# lose the _GI_CONFIG_* assignments.
+# lose the _GI_CONFIG_* assignments. Also: every command checks its
+# return value explicitly — bash suppresses errexit for the entire call
+# tree below an `||` operator, so we cannot rely on set -e here.
 gi_config_write() {
   local content="${1:-}"
   local path="${2:-${_GI_CONFIG_PATH:-$(gi_config_default_path)}}"
   [[ -n "$content" ]] || { echo "gi_config_write: content required" >&2; return 1; }
-  if ! printf '%s' "$content" | jq empty 2>/dev/null; then
+  if ! printf '%s' "$content" | jq -e 'type == "object"' >/dev/null 2>&1; then
     echo "Refusing to write invalid JSON to $path." >&2
     return 1
   fi
-  mkdir -p "$(dirname "$path")"
+  if ! mkdir -p "$(dirname "$path")"; then
+    echo "Failed to create directory for $path." >&2
+    return 1
+  fi
   local tmp
-  tmp=$(mktemp "$path.XXXXXX") || return 1
-  printf '%s\n' "$content" > "$tmp"
+  if ! tmp=$(mktemp "$path.XXXXXX"); then
+    echo "Failed to create temp file in $(dirname "$path")." >&2
+    return 1
+  fi
+  # >| overrides the caller's `noclobber` setting; mktemp pre-creates the
+  # file with 0600 perms so a plain `>` would otherwise fail with "cannot
+  # overwrite existing file".
+  if ! printf '%s\n' "$content" >| "$tmp"; then
+    echo "Failed to write $tmp" >&2
+    rm -f "$tmp"
+    return 1
+  fi
   chmod 600 "$tmp" 2>/dev/null || true
-  mv "$tmp" "$path"
+  if ! mv -f "$tmp" "$path"; then
+    echo "Failed to move $tmp to $path" >&2
+    rm -f "$tmp"
+    return 1
+  fi
   _GI_CONFIG_PATH="$path"
   _GI_CONFIG_JSON="$content"
   echo "Wrote $path" >&2
@@ -146,6 +169,10 @@ gi_config_init() {
   echo "Your KeyMap needs at least a 'GitHub' entry mapping to GITHUB_ACCESS_TOKEN." >&2
   echo "List BWS secrets with: bws secret list" >&2
   read -rp "GitHub PAT secret UUID in BWS: " gh_id
+  if [[ -z "$gh_id" ]]; then
+    echo "GitHub secret UUID is required. Aborting." >&2
+    return 1
+  fi
 
   local config
   config=$(jq -n \
@@ -726,16 +753,32 @@ _gi_main_body() {
     command -v "$cmd" &>/dev/null || { echo "Error: $cmd command not found." >&2; return 1; }
   done
 
+  local bootstrapped=0
   if ! gi_load_config 2>/dev/null; then
     echo "No git-init config found at \$GIT_INIT_CONFIG / ~/.git-init.json / $(gi_script_dir)/config.json."
     echo "Let's set one up."
-    gi_config_init || return 1
-    gi_load_config || return 1
+    if ! gi_config_init; then
+      echo "Bootstrap aborted." >&2
+      return 1
+    fi
+    bootstrapped=1
+    # gi_config_init already populated _GI_CONFIG_JSON / _GI_CONFIG_PATH
+    # in-memory; no need to re-read from disk.
   fi
   echo "Loaded configuration from $_GI_CONFIG_PATH."
 
+  # Sanity check: the KeyMap must contain at least one entry, otherwise
+  # we can't load anything.
+  local keymap_size
+  keymap_size=$(printf '%s' "$_GI_CONFIG_JSON" | jq '.KeyMap | length // 0')
+  if [[ "$keymap_size" -eq 0 ]]; then
+    echo "KeyMap in $_GI_CONFIG_PATH is empty." >&2
+    echo "Add an entry with: gi_config_add_key <name> <bws-secret-uuid> <ENV_VAR>" >&2
+    return 1
+  fi
+
   local should_load=0
-  if (( reload )); then
+  if (( reload || bootstrapped )); then
     should_load=1
   else
     local ev
@@ -745,7 +788,7 @@ _gi_main_body() {
         should_load=1
         break
       fi
-    done < <(echo "$_GI_CONFIG_JSON" | jq -r '.KeyMap[].Env | keys[]')
+    done < <(printf '%s' "$_GI_CONFIG_JSON" | jq -r '.KeyMap[].Env | keys[]')
   fi
 
   if (( should_load )); then
