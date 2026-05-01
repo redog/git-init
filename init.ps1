@@ -4,7 +4,14 @@ param(
     [switch]$Reload
 )
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ScriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+
+# Resolve user home robustly: $HOME can be unset (or wrong) on some shell
+# setups, which made the lookup below pick up "/" as a candidate.
+$UserHome = if ($HOME -and (Test-Path -LiteralPath $HOME -PathType Container)) { $HOME }
+            elseif ($env:HOME -and (Test-Path -LiteralPath $env:HOME -PathType Container)) { $env:HOME }
+            elseif ($IsWindows) { $env:USERPROFILE }
+            else { [Environment]::GetFolderPath('UserProfile') }
 
 # Import Modules
 Import-Module (Join-Path $ScriptDir "APIKeys") -Force
@@ -12,15 +19,22 @@ Import-Module (Join-Path $ScriptDir "GitInit") -Force
 Import-Module (Join-Path $ScriptDir "APIKeys" "KeyRotation") -Force
 
 # Load configuration. JSON is canonical (shared with init.sh); .psd1 kept for back-compat.
-$configCandidates = @(
+$configPath = $null
+foreach ($candidate in @(
     $env:GIT_INIT_CONFIG,
     (Join-Path $ScriptDir 'config.json'),
-    (Join-Path $HOME    '.git-init.json'),
+    (Join-Path $UserHome  '.git-init.json'),
     (Join-Path $ScriptDir 'config.psd1'),
-    (Join-Path $HOME    '.git-init.psd1')
-) | Where-Object { $_ -and (Test-Path $_) }
-
-$configPath = if ($configCandidates) { $configCandidates[0] } else { $null }
+    (Join-Path $UserHome  '.git-init.psd1')
+)) {
+    if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+    # -PathType Leaf is critical: without it Test-Path matches directories,
+    # so a stray "/" candidate would pass and Import-PowerShellDataFile would
+    # then fail with "cannot find path '/'".
+    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+    $configPath = $candidate
+    break
+}
 
 if (-not $configPath) {
     Write-Host "No git-init config found. Let's set one up." -ForegroundColor Cyan
@@ -33,9 +47,17 @@ if (-not $configPath) {
 
     Write-Host "Your KeyMap needs at least a 'GitHub' entry mapping to GITHUB_ACCESS_TOKEN."
     Write-Host "List BWS secrets with: bws secret list"
-    $ghId = Read-Host 'GitHub PAT secret UUID in BWS'
+    $ghId = Read-Host 'GitHub PAT secret UUID in BWS (8-4-4-4-12 hex)'
+    if ([string]::IsNullOrWhiteSpace($ghId)) {
+        Write-Error "GitHub secret UUID is required. Aborting."
+        return
+    }
+    if ($ghId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') {
+        Write-Error "'$ghId' is not a valid UUID (expected 8-4-4-4-12 hex chars). Aborting."
+        return
+    }
 
-    $defaultPath = Join-Path $HOME '.git-init.json'
+    $defaultPath = Join-Path $UserHome '.git-init.json'
     $pathInput = Read-Host "Save config to [$defaultPath]"
     if ([string]::IsNullOrWhiteSpace($pathInput)) { $pathInput = $defaultPath }
 
@@ -46,7 +68,13 @@ if (-not $configPath) {
 
 if ($configPath) {
     Write-Host "Loading configuration from $configPath..."
-    Import-APIKeysConfig -Path $configPath
+    try {
+        Import-APIKeysConfig -Path $configPath
+    }
+    catch {
+        Write-Error "Failed to load configuration: $($_.Exception.Message)"
+        return
+    }
 
     # Load Keys (this sets env vars like GITHUB_ACCESS_TOKEN)
     $shouldLoadKeys = $Reload
