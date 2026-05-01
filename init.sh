@@ -168,9 +168,13 @@ gi_config_init() {
   echo "" >&2
   echo "Your KeyMap needs at least a 'GitHub' entry mapping to GITHUB_ACCESS_TOKEN." >&2
   echo "List BWS secrets with: bws secret list" >&2
-  read -rp "GitHub PAT secret UUID in BWS: " gh_id
+  read -rp "GitHub PAT secret UUID in BWS (8-4-4-4-12 hex): " gh_id
   if [[ -z "$gh_id" ]]; then
     echo "GitHub secret UUID is required. Aborting." >&2
+    return 1
+  fi
+  if ! _gi_is_uuid "$gh_id"; then
+    echo "'$gh_id' is not a valid UUID (expected 8-4-4-4-12 hex chars). Aborting." >&2
     return 1
   fi
 
@@ -222,9 +226,13 @@ gi_config_add_key() {
   [[ -n "$name" ]] || { echo "Name is required." >&2; return 1; }
 
   if [[ -z "$secret_id" ]]; then
-    read -rp "BWS secret UUID for '$name': " secret_id
+    read -rp "BWS secret UUID for '$name' (8-4-4-4-12 hex): " secret_id
   fi
   [[ -n "$secret_id" ]] || { echo "SecretId is required." >&2; return 1; }
+  if ! _gi_is_uuid "$secret_id"; then
+    echo "'$secret_id' is not a valid UUID." >&2
+    return 1
+  fi
 
   local env_specs=("$@")
   if [[ ${#env_specs[@]} -eq 0 ]]; then
@@ -366,9 +374,20 @@ gi_get_secret() {
   # Usage: gi_get_secret <secret-id>
   local id="$1"
   [[ -n "$id" ]] || { echo "Usage: gi_get_secret <secret-id>" >&2; return 1; }
-  local out
-  out=$(_gi_bws secret get "$id" -o json 2>/dev/null) || return 1
-  echo "$out" | jq -r '.value'
+  local out rc
+  out=$(_gi_bws secret get "$id" -o json 2>&1)
+  rc=$?
+  if (( rc != 0 )); then
+    # Surface the bws CLI error so callers can show why a fetch failed
+    # (e.g. "404 Not Found", "bws is not authenticated").
+    printf '  bws: %s\n' "${out:-<no output>}" >&2
+    return 1
+  fi
+  printf '%s' "$out" | jq -r '.value'
+}
+
+_gi_is_uuid() {
+  [[ "$1" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]
 }
 
 gi_list_keys() {
@@ -793,7 +812,15 @@ _gi_main_body() {
 
   if (( should_load )); then
     echo "Loading API Keys..."
-    gi_load_keys || return 1
+    if ! gi_load_keys; then
+      echo "" >&2
+      echo "Some keys failed to load. Common fixes:" >&2
+      echo "  - Verify the SecretId with: bws secret list" >&2
+      echo "  - Update an entry:           gi_config_add_key <name> <correct-uuid> <ENV_VAR>" >&2
+      echo "  - Remove a bad entry:        gi_config_remove_key <name>" >&2
+      echo "  - Show current config:       gi_config_show" >&2
+      return 1
+    fi
   else
     echo "API Keys already loaded. Use --reload to force reload."
   fi
