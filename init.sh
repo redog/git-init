@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # git-init: bootstrap GitHub repos with Bitwarden-managed secrets.
+# Compatible with bash and zsh.
 #
 # Run executed for the interactive menu, or source for the env-loading flow plus
 # the gi_* helper functions (load/clear/update keys, GitHub API helpers, etc.).
@@ -9,7 +10,11 @@ MYINIT="git-init"
 
 # Sourced-vs-executed detection.
 _GI_SOURCED=0
-[[ ${BASH_SOURCE[0]} != "${0:-}" ]] && _GI_SOURCED=1
+if [ -n "${ZSH_VERSION:-}" ]; then
+  [[ ${ZSH_EVAL_CONTEXT:-} == *:file* ]] && _GI_SOURCED=1
+elif [ -n "${BASH_VERSION:-}" ]; then
+  [[ ${BASH_SOURCE[0]} != "${0:-}" ]] && _GI_SOURCED=1
+fi
 
 if (( ! _GI_SOURCED )); then
   echo "Tip: run 'source init.sh' (or 'source <(curl -sS .../init.sh)') to keep variables and helper functions in your shell."
@@ -43,7 +48,13 @@ _GI_CONFIG_JSON=""
 _GI_CONFIG_PATH=""
 
 gi_script_dir() {
-  cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
+  local src
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    src="${(%):-%x}"
+  else
+    src="${BASH_SOURCE[0]}"
+  fi
+  cd "$(dirname "$src")" && pwd
 }
 
 gi_locate_config() {
@@ -159,16 +170,19 @@ gi_config_init() {
   echo "Setting up a new git-init configuration at $target" >&2
 
   local item cli gh_id
-  read -rp "Bitwarden vault item (name or UUID) holding the BWS access token [Bitwarden Secrets Manager Service Account]: " item
+  printf "Bitwarden vault item (name or UUID) holding the BWS access token [Bitwarden Secrets Manager Service Account]: "
+  read -r item
   item=${item:-Bitwarden Secrets Manager Service Account}
 
-  read -rp "BWS CLI executable [bws]: " cli
+  printf "BWS CLI executable [bws]: "
+  read -r cli
   cli=${cli:-bws}
 
   echo "" >&2
   echo "Your KeyMap needs at least a 'GitHub' entry mapping to GITHUB_ACCESS_TOKEN." >&2
   echo "List BWS secrets with: bws secret list" >&2
-  read -rp "GitHub PAT secret UUID in BWS (8-4-4-4-12 hex): " gh_id
+  printf "GitHub PAT secret UUID in BWS (8-4-4-4-12 hex): "
+  read -r gh_id
   if [[ -z "$gh_id" ]]; then
     echo "GitHub secret UUID is required. Aborting." >&2
     return 1
@@ -221,12 +235,14 @@ gi_config_add_key() {
   [[ $# -ge 1 ]] && shift
 
   if [[ -z "$name" ]]; then
-    read -rp "Key name (e.g. GitHub, OpenAI): " name
+    printf "Key name (e.g. GitHub, OpenAI): "
+    read -r name
   fi
   [[ -n "$name" ]] || { echo "Name is required." >&2; return 1; }
 
   if [[ -z "$secret_id" ]]; then
-    read -rp "BWS secret UUID for '$name' (8-4-4-4-12 hex): " secret_id
+    printf "BWS secret UUID for '%s' (8-4-4-4-12 hex): " "$name"
+    read -r secret_id
   fi
   [[ -n "$secret_id" ]] || { echo "SecretId is required." >&2; return 1; }
   if ! _gi_is_uuid "$secret_id"; then
@@ -244,7 +260,8 @@ gi_config_add_key() {
       *)                   default_var="$(echo "$name" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9' '_')_API_KEY" ;;
     esac
     local var
-    read -rp "Environment variable name [$default_var]: " var
+    printf "Environment variable name [%s]: " "$default_var"
+    read -r var
     env_specs=("${var:-$default_var}")
   fi
 
@@ -479,7 +496,8 @@ gi_update_key() {
   [[ -n "$name" ]] || { echo "Usage: gi_update_key <name> [value]" >&2; return 1; }
 
   if [[ -z "$new_value" ]]; then
-    read -r -s -p "Enter new value for $name: " new_value
+    printf "Enter new value for %s: " "$name"
+    read -rs new_value
     echo
   fi
 
@@ -626,23 +644,33 @@ gi_flow_create() {
   local reconfigure="$1"
   local repo_name username name email
 
-  read -rp "Enter the name for the new repository: " repo_name
+  printf "Enter the name for the new repository: "
+  read -r repo_name
   [[ -n "$repo_name" ]] || { echo "Repository name cannot be empty." >&2; return 1; }
 
   if (( ! reconfigure )); then
     username=$(gi_gh_user 2>/dev/null || true)
   fi
-  [[ -n "${username:-}" ]] || read -rp "Enter your GitHub username: " username
+  if [[ -z "${username:-}" ]]; then
+    printf "Enter your GitHub username: "
+    read -r username
+  fi
 
   if (( ! reconfigure )); then
     name=$(git config --global user.name 2>/dev/null || true)
   fi
-  [[ -n "${name:-}" ]] || read -rp "Enter your full name: " name
+  if [[ -z "${name:-}" ]]; then
+    printf "Enter your full name: "
+    read -r name
+  fi
 
   if (( ! reconfigure )); then
     email=$(git config --global user.email 2>/dev/null || true)
   fi
-  [[ -n "${email:-}" ]] || read -rp "Enter your email address: " email
+  if [[ -z "${email:-}" ]]; then
+    printf "Enter your email address: "
+    read -r email
+  fi
 
   local full
   if full=$(gi_gh_new_repo "$repo_name"); then
@@ -652,24 +680,33 @@ gi_flow_create() {
 }
 
 gi_flow_clone() {
-  local repos
-  mapfile -t repos < <(gi_gh_repos | sort)
+  local repos=()
+  local _line
+  while IFS= read -r _line; do
+    repos+=("$_line")
+  done < <(gi_gh_repos | sort)
   if [[ ${#repos[@]} -eq 0 ]]; then
     echo "No repositories found." >&2
     return 0
   fi
 
   echo "Select a repository to clone:"
-  local i
-  for i in "${!repos[@]}"; do
-    echo "  $((i+1)). ${repos[i]}"
+  local i=1
+  for _line in "${repos[@]}"; do
+    echo "  $i. $_line"
+    ((i++))
   done
 
   local selection selected
   while :; do
-    read -rp "Enter repository number (1-${#repos[@]}): " selection
+    printf "Enter repository number (1-%d): " "${#repos[@]}"
+    read -r selection
     if [[ "$selection" =~ ^[0-9]+$ ]] && (( selection >= 1 && selection <= ${#repos[@]} )); then
-      selected="${repos[selection-1]}"
+      if [ -n "${ZSH_VERSION:-}" ]; then
+        selected="${repos[$selection]}"
+      else
+        selected="${repos[$((selection-1))]}"
+      fi
       break
     fi
     echo "Invalid selection." >&2
@@ -697,7 +734,8 @@ gi_menu() {
   echo "  [2] Clone an existing repository"
   echo "  [3] Continue to shell"
   local choice
-  read -rp "Please select [1-3]: " choice
+  printf "Please select [1-3]: "
+  read -r choice
   case "$choice" in
     1) gi_flow_create "$reconfigure" ;;
     2) gi_flow_clone ;;
@@ -803,7 +841,13 @@ _gi_main_body() {
     local ev
     while IFS= read -r ev; do
       [[ -n "$ev" ]] || continue
-      if [[ -z "${!ev:-}" ]]; then
+      local _ev_val
+      if [ -n "${ZSH_VERSION:-}" ]; then
+        _ev_val="${(P)ev:-}"
+      else
+        _ev_val="${!ev:-}"
+      fi
+      if [[ -z "$_ev_val" ]]; then
         should_load=1
         break
       fi
@@ -845,7 +889,11 @@ _gi_main() {
   local _e=0 _u=0 _p=0 rc=0
   [[ $- == *e* ]] && _e=1
   [[ $- == *u* ]] && _u=1
-  shopt -qo pipefail 2>/dev/null && _p=1
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    [[ -o pipefail ]] 2>/dev/null && _p=1
+  else
+    shopt -qo pipefail 2>/dev/null && _p=1
+  fi
 
   _gi_main_body "$@" || rc=$?
 
