@@ -73,19 +73,19 @@ gi_locate_config() {
 }
 
 gi_load_config() {
-  local path
-  if ! path=$(gi_locate_config); then
+  local cfg_path
+  if ! cfg_path=$(gi_locate_config); then
     return 1
   fi
-  if [[ ! -s "$path" ]]; then
-    echo "Config file is empty: $path" >&2
+  if [[ ! -s "$cfg_path" ]]; then
+    echo "Config file is empty: $cfg_path" >&2
     return 1
   fi
-  _GI_CONFIG_PATH="$path"
-  _GI_CONFIG_JSON=$(cat "$path") || return 1
+  _GI_CONFIG_PATH="$cfg_path"
+  _GI_CONFIG_JSON=$(cat "$cfg_path") || return 1
   # Require a JSON object (jq -e returns non-zero for null/empty/non-object).
   if ! printf '%s' "$_GI_CONFIG_JSON" | jq -e 'type == "object"' >/dev/null 2>&1; then
-    echo "Config is not a JSON object: $path" >&2
+    echo "Config is not a JSON object: $cfg_path" >&2
     return 1
   fi
   return 0
