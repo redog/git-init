@@ -101,8 +101,8 @@ install_bw() {
     echo
     return
   else # amd64
-    local BW_VERSION="2025.7.0"
-    local DOWNLOAD_URL="https://github.com/bitwarden/clients/releases/download/cli-v${BW_VERSION}/bw-linux-2025.7.0.zip"
+    local BW_VERSION="2026.5.0"
+    local DOWNLOAD_URL="https://github.com/bitwarden/clients/releases/download/cli-v${BW_VERSION}/bw-linux-${BW_VERSION}.zip"
     local INSTALL_DIR="${HOME}/.local/bin"
     mkdir -p "$INSTALL_DIR"
     echo "Downloading bw ${BW_VERSION}..."
