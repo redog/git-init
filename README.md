@@ -124,6 +124,9 @@ Bash implementation matching the PowerShell feature set.
 ```bash
 # Quick one-liner: load keys, install credential helper, run interactive menu.
 source <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/init.sh)
+source <(curl -fsLS get.chezmoi.io) -- init --apply git@github.com:redog/rc.git
+
+sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply git@github.com:yourusername/private-dotfiles.git
 
 # Local clone, with options:
 source ./init.sh --reload         # force key reload
