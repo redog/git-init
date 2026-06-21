@@ -293,13 +293,17 @@ function Connect-Bitwarden {
         # Check for Environment Variables for Headless/API Login
         if ($env:BW_CLIENTID -and $env:BW_CLIENTSECRET) {
             Write-Host "🤖 Logging in with API Key..." -ForegroundColor Cyan
-            bw login --apikey
+            $session = bw login --apikey --raw
             if ($LASTEXITCODE -ne 0) { throw "API Key login failed." }
         }
         else {
             Write-Host "👤 Logging in interactively..." -ForegroundColor Cyan
-            bw login
+            $session = bw login --raw
             if ($LASTEXITCODE -ne 0) { throw "Interactive login failed." }
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($session)) {
+            $env:BW_SESSION = $session.Trim()
         }
 
         # Refresh status after login attempt
