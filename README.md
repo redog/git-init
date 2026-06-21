@@ -126,10 +126,25 @@ Bash implementation matching the PowerShell feature set.
 
 ```bash
 # Quick start: install pre-reqs, load keys, install credential helper.
-source <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/setup.sh)
-source <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/init.sh)
-# todo add chezmoi tutorial:
-source <(curl -fsLS get.chezmoi.io/lb) -- init --apply git@github.com:redog/rc.git
+- Converted everything to chezmoi which pulls deps for me now:
+- I bootstrap from a private rc repo by using a public gist file like this. 
+source <(curl -fsLS https://gist.githubusercontent.com/redog/8472dd896a39413a43a76618d2b12ab1/raw/f6753977db292e71468ec7d2c3359a0d58dab105/puss-in-bootstrap.sh)
+- chezmoi handles my pre-reqs in a run_once_before_install_prereqs.sh script. 
+ #https://gist.github.com/redog/2f97dcaab1564f55c17f0ba431ecfc2f
+source <(curl -fsLS get.chezmoi.io) -- init --apply git@github.com:redog/rc.git
+
+# You could also just export the GH_TOKEN env variable manually before init --apply like:
+ - Install chezmoi natively
+
+```
+sh -c "$(curl -fsLS get.chezmoi.io)"
+```
+
+ - Init and apply using the token in the URL
+
+```
+  ~/bin/chezmoi init --apply https://oauth2:${GH_TOKEN}@github.com/${YOUR_USERNAME}/dotfiles.git
+```
  
 # Local clone, with options:
 source ./init.sh --reload         # force key reload
