@@ -73,6 +73,9 @@ Cross-platform PowerShell 7+ implementation.
 ### Install on Windows
 
 ```powershell
+# chezmoi install from pwsh
+iex "&{$(irm 'https://get.chezmoi.io/ps1')} -b '~/bin'"
+# Windows
 winget install pwsh
 winget install Git.Git
 winget install Bitwarden.CLI
