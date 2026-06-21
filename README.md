@@ -83,7 +83,7 @@ winget install Rustlang.Rustup
 ### Usage
 
 ```powershell
-. ./init.ps1                # default flow (load keys + interactive menu)
+. ./init.ps1                # default flow (load keys)
 . ./init.ps1 -Reload        # force-reload keys even if already in env
 . ./init.ps1 -Reconfigure   # re-prompt for git config (name, email, gh user)
 ```
@@ -122,7 +122,7 @@ Bash implementation matching the PowerShell feature set.
 ### Usage
 
 ```bash
-# Quick start: install pre-reqs, load keys, install credential helper, run interactive menu.
+# Quick start: install pre-reqs, load keys, install credential helper.
 source <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/setup.sh)
 source <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/init.sh)
 # todo add chezmoi tutorial:
@@ -131,7 +131,7 @@ source <(curl -fsLS get.chezmoi.io) -- init --apply git@github.com:redog/rc.git
 # Local clone, with options:
 source ./init.sh --reload         # force key reload
 source ./init.sh --reconfigure    # re-prompt for git identity
-source ./init.sh --no-menu        # set up env, skip the menu
+source ./init.sh --menu        # set up env and run interactive menu
 ./init.sh                          # executed (not sourced) — env stays in subshell
 ```
 

@@ -1,5 +1,6 @@
 # Main entry point for the Git-Init script
 param(
+    [switch]$Menu,
     [switch]$Reconfigure,
     [switch]$Reload
 )
@@ -149,104 +150,106 @@ echo "password=`$token"
     }
 }
 
-# Prompt user for action
-$title = "Git-Init"
-$message = "What would you like to do?"
-$choices = [System.Management.Automation.Host.ChoiceDescription[]]@(
-    (New-Object System.Management.Automation.Host.ChoiceDescription -ArgumentList '&New repository', 'Create a new repository'),
-    (New-Object System.Management.Automation.Host.ChoiceDescription -ArgumentList '&Clone existing repository', 'Clone an existing repository'),
-    (New-Object System.Management.Automation.Host.ChoiceDescription -ArgumentList 'Continue to &shell', 'Exit the script and continue to shell')
-)
+if ($Menu) {
+    # Prompt user for action
+    $title = "Git-Init"
+    $message = "What would you like to do?"
+    $choices = [System.Management.Automation.Host.ChoiceDescription[]]@(
+        (New-Object System.Management.Automation.Host.ChoiceDescription -ArgumentList '&New repository', 'Create a new repository'),
+        (New-Object System.Management.Automation.Host.ChoiceDescription -ArgumentList '&Clone existing repository', 'Clone an existing repository'),
+        (New-Object System.Management.Automation.Host.ChoiceDescription -ArgumentList 'Continue to &shell', 'Exit the script and continue to shell')
+    )
 
-$choice = $Host.UI.PromptForChoice($title, $message, $choices, 0)
+    $choice = $Host.UI.PromptForChoice($title, $message, $choices, 0)
 
-if ($choice -eq 0) {
-    # Create new repo
-    $repoName = Read-Host "Enter the name for the new repository"
+    if ($choice -eq 0) {
+        # Create new repo
+        $repoName = Read-Host "Enter the name for the new repository"
 
-    # Determine GitHub username
-    $username = $null
-    if (-not $Reconfigure) {
-        $username = Get-GHUser
-    }
-    if ([string]::IsNullOrWhiteSpace($username)) {
-        $username = Read-Host "Enter your GitHub username"
-    }
-
-    # Determine Name
-    $name = $null
-    if (-not $Reconfigure) {
-        $name = git config --global user.name
-    }
-    if ([string]::IsNullOrWhiteSpace($name)) {
-        $name = Read-Host "Enter your full name"
-    }
-
-    # Determine Email
-    $email = $null
-    if (-not $Reconfigure) {
-        $email = git config --global user.email
-    }
-    if ([string]::IsNullOrWhiteSpace($email)) {
-        $email = Read-Host "Enter your email address"
-    }
-
-    $repo = New-GHRepository -RepoName $repoName
-    if ($repo) {
-        Write-Host "Repository '$($repo.full_name)' created successfully."
-        Initialize-LocalGitRepository -RepoName $repoName -Username $username -Name $name -Email $email
-    }
-}
-elseif ($choice -eq 1) {
-    # Clone existing repo
-    $repositories = @(Get-GHRepositories | Sort-Object)
-    if ($repositories) {
-        Write-Host "Select a repository to clone:"
-        for ($i = 0; $i -lt $repositories.Count; $i++) {
-            Write-Host "$($i + 1). $($repositories[$i])"
+        # Determine GitHub username
+        $username = $null
+        if (-not $Reconfigure) {
+            $username = Get-GHUser
+        }
+        if ([string]::IsNullOrWhiteSpace($username)) {
+            $username = Read-Host "Enter your GitHub username"
         }
 
-        while ($true) {
-            $selection = Read-Host "Enter repository number (1-$($repositories.Count))"
-            if ($selection -match '^\d+$' -and [int]$selection -ge 1 -and [int]$selection -le $repositories.Count) {
-                $selectedRepo = $repositories[[int]$selection - 1]
-                break
+        # Determine Name
+        $name = $null
+        if (-not $Reconfigure) {
+            $name = git config --global user.name
+        }
+        if ([string]::IsNullOrWhiteSpace($name)) {
+            $name = Read-Host "Enter your full name"
+        }
+
+        # Determine Email
+        $email = $null
+        if (-not $Reconfigure) {
+            $email = git config --global user.email
+        }
+        if ([string]::IsNullOrWhiteSpace($email)) {
+            $email = Read-Host "Enter your email address"
+        }
+
+        $repo = New-GHRepository -RepoName $repoName
+        if ($repo) {
+            Write-Host "Repository '$($repo.full_name)' created successfully."
+            Initialize-LocalGitRepository -RepoName $repoName -Username $username -Name $name -Email $email
+        }
+    }
+    elseif ($choice -eq 1) {
+        # Clone existing repo
+        $repositories = @(Get-GHRepositories | Sort-Object)
+        if ($repositories) {
+            Write-Host "Select a repository to clone:"
+            for ($i = 0; $i -lt $repositories.Count; $i++) {
+                Write-Host "$($i + 1). $($repositories[$i])"
             }
-            Write-Warning "Invalid selection."
-        }
 
-        # Clone using credential helper to avoid prompts
-        $helperScript = Join-Path $HOME ".config/git-credential-env"
-        if ($IsLinux) {
-            git -c credential.helper=$helperScript clone "https://github.com/$selectedRepo.git"
-        }
-        elseif ($IsMacOS) {
-            git -c credential.helper=osxkeychain clone "https://github.com/$selectedRepo.git"
-        }
-        else {
-            git -c credential.helper=manager clone "https://github.com/$selectedRepo.git"
-        }
+            while ($true) {
+                $selection = Read-Host "Enter repository number (1-$($repositories.Count))"
+                if ($selection -match '^\d+$' -and [int]$selection -ge 1 -and [int]$selection -le $repositories.Count) {
+                    $selectedRepo = $repositories[[int]$selection - 1]
+                    break
+                }
+                Write-Warning "Invalid selection."
+            }
 
-        $repoName = Split-Path $selectedRepo -Leaf
-        if (Test-Path $repoName) {
-            Push-Location $repoName
+            # Clone using credential helper to avoid prompts
+            $helperScript = Join-Path $HOME ".config/git-credential-env"
             if ($IsLinux) {
-                git config credential.helper $helperScript
+                git -c credential.helper=$helperScript clone "https://github.com/$selectedRepo.git"
             }
             elseif ($IsMacOS) {
-                git config credential.helper osxkeychain
+                git -c credential.helper=osxkeychain clone "https://github.com/$selectedRepo.git"
             }
             else {
-                git config credential.helper manager
+                git -c credential.helper=manager clone "https://github.com/$selectedRepo.git"
             }
-            git config remote.origin.url "https://github.com/$selectedRepo.git"
-            Write-Host "Clone complete. Credential helper configured."
-            Pop-Location
-        } else {
-            Write-Warning "Failed to clone repository. Please check the cloned repository."
+
+            $repoName = Split-Path $selectedRepo -Leaf
+            if (Test-Path $repoName) {
+                Push-Location $repoName
+                if ($IsLinux) {
+                    git config credential.helper $helperScript
+                }
+                elseif ($IsMacOS) {
+                    git config credential.helper osxkeychain
+                }
+                else {
+                    git config credential.helper manager
+                }
+                git config remote.origin.url "https://github.com/$selectedRepo.git"
+                Write-Host "Clone complete. Credential helper configured."
+                Pop-Location
+            } else {
+                Write-Warning "Failed to clone repository. Please check the cloned repository."
+            }
         }
-    } 
-}
-elseif ($choice -eq 2) {
-    Write-Host "Continuing to shell..."
+    }
+    elseif ($choice -eq 2) {
+        Write-Host "Continuing to shell..."
+    }
 }

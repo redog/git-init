@@ -755,14 +755,14 @@ gi_print_help() {
 git-init $GI_VERSION
 
 Usage:
-  source init.sh [--reload] [--reconfigure] [--no-menu]
+  source init.sh [--reload] [--reconfigure] [--menu]
   ./init.sh     [--reload] [--reconfigure]
 
 Options:
   --reload        Force reload of API keys even if env vars are already set.
   --reconfigure   Re-prompt for git config (name, email, GitHub user) instead of
                   reading existing values.
-  --no-menu       (sourced only) Set up keys/credential helper but skip the
+  --menu          (sourced only) Set up keys/credential helper and run the
                   interactive menu.
   -h, --help      Show this help.
 
@@ -796,12 +796,12 @@ EOF
 _gi_main_body() {
   set -euo pipefail
 
-  local reconfigure=0 reload=0 no_menu=0
+  local reconfigure=0 reload=0 show_menu=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --reconfigure) reconfigure=1; shift ;;
       --reload)      reload=1; shift ;;
-      --no-menu)     no_menu=1; shift ;;
+      --menu)     show_menu=1; shift ;;
       -h|--help)     gi_print_help; return 0 ;;
       *) echo "Unknown argument: $1" >&2; gi_print_help >&2; return 2 ;;
     esac
@@ -876,7 +876,7 @@ _gi_main_body() {
 
   gi_ensure_credential_helper
 
-  if (( _GI_SOURCED && no_menu )); then
+  if (( _GI_SOURCED && ! show_menu )); then
     return 0
   fi
 
