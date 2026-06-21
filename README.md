@@ -129,7 +129,7 @@ Bash implementation matching the PowerShell feature set.
 source <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/setup.sh)
 source <(curl -sS https://raw.githubusercontent.com/redog/git-init/master/init.sh)
 # todo add chezmoi tutorial:
-source <(curl -fsLS get.chezmoi.io) -- init --apply git@github.com:redog/rc.git
+source <(curl -fsLS get.chezmoi.io/lb) -- init --apply git@github.com:redog/rc.git
  
 # Local clone, with options:
 source ./init.sh --reload         # force key reload
