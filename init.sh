@@ -325,14 +325,16 @@ gi_connect_bitwarden() {
   status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo "")
 
   if [[ "$status" == "unauthenticated" || -z "$status" ]]; then
+    local session
     if [[ -n "${BW_CLIENTID:-}" && -n "${BW_CLIENTSECRET:-}" ]]; then
       echo "🤖 Logging in to Bitwarden CLI with API key..."
-      BW_CLIENTID="$BW_CLIENTID" BW_CLIENTSECRET="$BW_CLIENTSECRET" bw login --apikey \
+      session=$(BW_CLIENTID="$BW_CLIENTID" BW_CLIENTSECRET="$BW_CLIENTSECRET" bw login --apikey --raw) \
         || { echo "API key login failed." >&2; return 1; }
     else
       echo "👤 Logging in to Bitwarden CLI..."
-      bw login || { echo "Interactive login failed." >&2; return 1; }
+      session=$(bw login --raw) || { echo "Interactive login failed." >&2; return 1; }
     fi
+    export BW_SESSION="$session"
     status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo "")
   fi
 
