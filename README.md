@@ -58,6 +58,35 @@ treating them as personal config keeps your repo clean.
 
 ---
 
+## OS Keychain Session Caching
+
+After the first successful Bitwarden unlock, both implementations store the vault
+session (`BW_SESSION`) and the BWS service-account token (`BWS_ACCESS_TOKEN`) in
+the OS native credential store. Every subsequent shell reads the cached tokens
+first — the master password prompt only reappears when the session genuinely
+expires or is revoked.
+
+| Platform | Backend                                   | Requirement                                                          |
+| -------- | ----------------------------------------- | -------------------------------------------------------------------- |
+| macOS    | macOS Keychain (`security` CLI)           | Built-in, no setup needed                                            |
+| Linux    | GNOME Keyring / libsecret (`secret-tool`) | `app-crypt/libsecret` (Gentoo) · `libsecret-tools` (Debian / Ubuntu) |
+| Windows  | Windows Credential Manager (WinRT API)    | Built-in, no setup needed                                            |
+
+To force a full re-authentication (e.g. after a token rotation or suspected
+compromise), clear the keychain entries before re-sourcing:
+
+```bash
+# bash / zsh
+gi_session_clear && source init.sh
+```
+
+```powershell
+# PowerShell
+Clear-GitInitSession; . ./init.ps1
+```
+
+---
+
 ## PowerShell version
 
 Cross-platform PowerShell 7+ implementation.
@@ -86,33 +115,63 @@ winget install Rustlang.Rustup
 ### Usage
 
 ```powershell
-. ./init.ps1                # default flow (load keys)
+. ./init.ps1                # default: load keys, show config path + summary
+. ./init.ps1 -Verbose       # also show per-key confirmations and keychain messages
+. ./init.ps1 -Quiet         # print nothing (errors still appear on stderr)
 . ./init.ps1 -Reload        # force-reload keys even if already in env
 . ./init.ps1 -Reconfigure   # re-prompt for git config (name, email, gh user)
+. ./init.ps1 -Menu          # set up env and run the interactive create/clone menu
 ```
 
-Exposed cmdlets after sourcing:
+### Shell profile integration
 
-| Cmdlet / alias               | Purpose                                              |
-| ---------------------------- | ---------------------------------------------------- |
-| `Set-AllAPIKeys` / `load_keys` | Load keys per `KeyMap` (`-Only`, `-Except`, `-Quiet`). |
-| `Clear-APIKeyEnv`            | Unset all key-map env vars (`-ClearBitwardenSession`). |
-| `Update-VaultAPIKey`         | Update a secret in BWS and reload it locally.        |
-| `Get-APIKeyMap`              | Print the loaded key map.                            |
-| `Connect-Bitwarden`          | Ensure `bw` is logged-in and unlocked.               |
-| `Initialize-APIKeysConfigFile -Path -BwsTokenItem -BwsCliPath` | Create a new config file. |
-| `Add-APIKey -Name -SecretId -Env @{...}` | Add/update a KeyMap entry and persist.    |
-| `Remove-APIKey -Name`        | Drop a KeyMap entry and persist.                     |
-| `Set-APIKeysConfigField -Field -Value` | Set `BwsCliPath` / `BwsTokenItem`.         |
-| `Show-APIKeysConfig`         | Dump current config (path + map).                    |
-| `Save-APIKeysConfig [-Path]` | Persist current in-memory config.                    |
-| `Get-GHUser` / `Get-GHRepositories` / `New-GHRepository` | GitHub helpers. |
+Add to your PowerShell profile so keys are available in every new session:
+
+```powershell
+# $PROFILE  (e.g. ~\Documents\PowerShell\Microsoft.PowerShell_profile.ps1)
+. "$HOME\path\to\git-init\init.ps1" -Quiet
+```
+
+`-Quiet` keeps startup silent. Thanks to keychain caching the vault is not
+re-unlocked on subsequent shells — it simply restores the saved session. Errors
+(expired session, missing config) still appear on stderr. Replace `-Quiet` with
+`-Verbose` while debugging.
+
+To find your profile path:
+
+```powershell
+echo $PROFILE
+```
+
+### Exposed cmdlets
+
+| Cmdlet / alias                     | Purpose                                                        |
+| ---------------------------------- | -------------------------------------------------------------- |
+| `Set-AllAPIKeys` / `load_keys`     | Load keys per `KeyMap` (`-Only`, `-Except`, `-Quiet`).         |
+| `Clear-APIKeyEnv`                  | Unset all key-map env vars (`-ClearBitwardenSession`).         |
+| `Update-VaultAPIKey`               | Update a secret in BWS and reload it locally.                  |
+| `Get-APIKeyMap`                    | Print the loaded key map.                                      |
+| `Connect-Bitwarden`                | Ensure `bw` is logged-in and unlocked.                         |
+| `Initialize-APIKeysConfigFile`     | Create a new config file (`-Path`, `-BwsTokenItem`, `-BwsCliPath`). |
+| `Add-APIKey -Name -SecretId -Env`  | Add or update a KeyMap entry and persist.                      |
+| `Remove-APIKey -Name`              | Drop a KeyMap entry and persist.                               |
+| `Set-APIKeysConfigField -Field -Value` | Set `BwsCliPath` or `BwsTokenItem`.                        |
+| `Show-APIKeysConfig`               | Dump current config (path + map).                              |
+| `Save-APIKeysConfig [-Path]`       | Persist current in-memory config.                              |
+| `Get-GHUser` / `Get-GHRepositories` / `New-GHRepository` | GitHub helpers.               |
+| `Clear-GitInitSession`             | Remove session from keychain and unset env vars.               |
+| `Save-GitInitSession`              | Manually save current `BW_SESSION` / `BWS_ACCESS_TOKEN` to keychain. |
+| `Restore-GitInitSession`           | Manually restore session from keychain into env.               |
+| `Save-GitInitCredential -Key -Value` | Low-level: write one credential to the keychain.             |
+| `Get-GitInitCredential -Key`       | Low-level: read one credential from the keychain.              |
+| `Remove-GitInitCredential -Key`    | Low-level: delete one credential from the keychain.            |
+| `Set-GitInitVerbosity -Level <0-2>` | Set output level (0 quiet · 1 normal · 2 verbose).            |
 
 ---
 
 ## Shell version
 
-Bash implementation matching the PowerShell feature set.
+Bash / zsh implementation matching the PowerShell feature set.
 
 ### Prerequisites
 
@@ -124,13 +183,23 @@ Bash implementation matching the PowerShell feature set.
 
 ### Usage
 
+```bash
+source ./init.sh                # default: load keys, show config path + summary
+source ./init.sh -v             # also show per-key confirmations and keychain messages
+source ./init.sh -q             # print nothing (errors still appear on stderr)
+source ./init.sh --reload       # force key reload
+source ./init.sh --reconfigure  # re-prompt for git identity
+source ./init.sh --menu         # set up env and run the interactive create/clone menu
+./init.sh                       # executed (not sourced) — env stays in subshell
+```
+
 **Quick start: install pre-reqs, load keys, install credential helper.**
 - Converted everything to chezmoi which pulls deps for me now:
-- I bootstrap from a private rc repo by using a public gist file like this. 
+- I bootstrap from a private rc repo by using a public gist file like this.
 ```bash
 source <(curl -fsLS https://gist.githubusercontent.com/redog/8472dd896a39413a43a76618d2b12ab1/raw/f6753977db292e71468ec7d2c3359a0d58dab105/puss-in-bootstrap.sh)
 ```
-- chezmoi handles my pre-reqs in a run_once_before_install_prereqs.sh script. 
+- chezmoi handles my pre-reqs in a run_once_before_install_prereqs.sh script.
  *(See: https://gist.github.com/redog/2f97dcaab1564f55c17f0ba431ecfc2f)*
 ```bash
 source <(curl -fsLS get.chezmoi.io) -- init --apply git@github.com:redog/rc.git
@@ -146,21 +215,45 @@ sh -c "$(curl -fsLS get.chezmoi.io)"
 ```bash
 ~/bin/chezmoi init --apply https://oauth2:${GH_TOKEN}@github.com/${YOUR_USERNAME}/dotfiles.git
 ```
- 
-**Local clone, with options:**
+
+### Shell profile integration
+
+Add to `~/.bashrc` or `~/.zshrc` so keys are available in every new interactive
+shell. With keychain caching in place, subsequent shells restore the saved session
+without prompting for the master password:
+
 ```bash
-source ./init.sh --reload         # force key reload
-source ./init.sh --reconfigure    # re-prompt for git identity
-source ./init.sh --menu           # set up env and run interactive menu
-./init.sh                         # executed (not sourced) — env stays in subshell
+# ~/.bashrc or ~/.zshrc
+source /path/to/git-init/init.sh -q
 ```
 
-Exposed functions after sourcing:
+`-q` keeps startup silent. If the session has expired or the vault needs
+unlocking, you will see only the `bw unlock` prompt itself — no other output.
+Remove `-q` or swap it for `-v` while debugging.
+
+For a remote / curl-based setup (e.g. via chezmoi dotfiles):
+
+```bash
+# ~/.zshrc  — sourced from a URL; -q keeps it silent on every shell open
+source <(curl -fsLS https://raw.githubusercontent.com/you/rc/main/init.sh) -q
+```
+
+If you only want to load keys when the env vars are actually missing (skipping
+even the curl on warm shells), wrap it in a guard:
+
+```bash
+# ~/.bashrc
+if [[ -z "${GITHUB_ACCESS_TOKEN:-}" ]]; then
+  source /path/to/git-init/init.sh -q
+fi
+```
+
+### Exposed functions
 
 | Function                          | Purpose                                              |
 | --------------------------------- | ---------------------------------------------------- |
-| `gi_load_keys [--only N1,N2] [--except N1,N2] [--quiet]` | Load keys per `KeyMap`.    |
-| `gi_clear_keys [--all]`           | Unset all key-map env vars (`--all` also clears bw session). |
+| `gi_load_keys [--only N1,N2] [--except N1,N2] [--quiet]` | Load keys per `KeyMap`. Per-key messages shown only at `-v`. |
+| `gi_clear_keys [--all]`           | Unset all key-map env vars (`--all` also clears session). |
 | `gi_update_key <name> [value]`    | Update a secret in BWS and reload it locally.        |
 | `gi_list_keys`                    | List `Name`, `SecretId`, env vars per entry.         |
 | `gi_get_secret <secret-id>`       | Fetch a single value from BWS.                       |
@@ -171,8 +264,12 @@ Exposed functions after sourcing:
 | `gi_config_remove_key <name>`     | Drop a KeyMap entry by name.                         |
 | `gi_connect_bitwarden`            | Ensure `bw` is logged-in and unlocked.               |
 | `gi_get_bws_token`                | Bootstrap `BWS_ACCESS_TOKEN` from the bw vault item. |
+| `gi_session_clear`                | Remove session from keychain and unset env vars.     |
+| `gi_keychain_save <key> <value>`  | Low-level: write one credential to the OS keychain.  |
+| `gi_keychain_load <key>`          | Low-level: read one credential from the OS keychain. |
+| `gi_keychain_clear <key>`         | Low-level: delete one credential from the OS keychain. |
 | `gi_gh_user` / `gi_gh_repos` / `gi_gh_new_repo <name>` | GitHub helpers.                |
-| `gi_init_local_repo <repo> <gh-user> <full-name> <email>` | Local init + first push. |
+| `gi_init_local_repo <repo> <gh-user> <full-name> <email>` | Local init + first push.    |
 | `gi_menu`                         | Interactive create/clone menu.                       |
 
 Examples:
@@ -187,6 +284,9 @@ gi_config_add_key LangSmith ad3f662b-9c78-4d22-9e15-b2c70147eabc \
 
 gi_config_set BwsTokenItem 'My Token Item'
 gi_config_remove_key OpenAI
+
+# Force full re-auth (e.g. after rotating the BWS service-account token).
+gi_session_clear && source init.sh
 ```
 
 ### Sourcing safety
