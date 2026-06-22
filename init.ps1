@@ -134,6 +134,8 @@ if ($IsLinux -or $IsMacOS) {
 
     $helperScript = Join-Path $configDir "git-credential-env"
     if (-not (Test-Path $helperScript)) {
+        $bwsCliPath = $script:BwsCliPath
+        if ([string]::IsNullOrWhiteSpace($bwsCliPath)) { $bwsCliPath = 'bws' }
         $helperContent = @"
 #!/usr/bin/env bash
 set -euo pipefail
@@ -143,7 +145,7 @@ while IFS= read -r line && [[ -n `$line ]]; do :; done
 token=`${GITHUB_ACCESS_TOKEN:-}
 if [[ -z `$token ]]; then
     [[ -n `${GH_TOKEN_ID:-} ]] || { echo "GH_TOKEN_ID not set" >&2; exit 1; }
-    token=`$(bws secret get "`$GH_TOKEN_ID" -o json | jq -r .value)
+    token=`$($bwsCliPath secret get "`$GH_TOKEN_ID" -o json | jq -r .value)
 fi
 echo "username=x-access-token"
 echo "password=`$token"
