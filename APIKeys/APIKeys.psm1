@@ -293,11 +293,35 @@ function script:Write-GitInitLog {
 #   secret-tool - Linux GNOME Keyring / libsecret (install: app-crypt/libsecret)
 #   none        - no backend; sessions will not persist across shells
 
+$script:KeychainBackendCache = $null
+
 function script:Get-KeychainBackend {
-    if ($IsWindows)   { return 'windows' }
-    if ($IsMacOS)     { return 'macos' }
-    if (Get-Command secret-tool -ErrorAction SilentlyContinue) { return 'secret-tool' }
-    return 'none'
+    if ($null -ne $script:KeychainBackendCache) { return $script:KeychainBackendCache }
+
+    $backend = 'none'
+    if ($IsWindows) {
+        # WinRT projection (PasswordVault) is unreliable under PowerShell 7/Core —
+        # the `,ContentType=WindowsRuntime` type accelerator often fails to bind there
+        # even though it works fine in Windows PowerShell 5.1. Probe it once and
+        # fall back instead of throwing on every credential operation.
+        try {
+            [void][Windows.Security.Credentials.PasswordVault,Windows.Security.Credentials,ContentType=WindowsRuntime]
+            [void](New-Object Windows.Security.Credentials.PasswordVault)
+            $backend = 'windows'
+        } catch {
+            $backend = 'none'
+            Write-Warning "Windows Credential Manager (PasswordVault) is unavailable in this PowerShell host (likely PowerShell 7+/Core). Sessions will not persist across shells. Run from Windows PowerShell 5.1, or install libsecret/secret-tool, to enable persistence."
+        }
+    }
+    elseif ($IsMacOS) {
+        $backend = 'macos'
+    }
+    elseif (Get-Command secret-tool -ErrorAction SilentlyContinue) {
+        $backend = 'secret-tool'
+    }
+
+    $script:KeychainBackendCache = $backend
+    return $backend
 }
 
 function Save-GitInitCredential {
