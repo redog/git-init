@@ -668,7 +668,7 @@ gi_update_key() {
   echo "✅ Vault updated successfully for '$name'."
 
   echo "🔄 Reloading '$name' into current environment..."
-  gi_load_keys --only "$name" --quiet || return 1
+  gi_load_keys --only "$name" --quiet --no-cache || return 1
   echo "🚀 Done. Your shell is using the new value."
 }
 

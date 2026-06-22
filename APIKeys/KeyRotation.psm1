@@ -71,7 +71,7 @@ function Update-VaultAPIKey {
 
     # 4. Reload the specific key into the current session
     Write-Host "🔄 Reloading '$Name' into current environment..." -ForegroundColor Cyan
-    Set-AllAPIKeys -Only $Name -Quiet
+    Set-AllAPIKeys -Only $Name -Quiet -NoCache
 
     Write-Host "🚀 Done! Your terminal is using the new key." -ForegroundColor Green
 }
