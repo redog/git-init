@@ -124,33 +124,35 @@ Bash implementation matching the PowerShell feature set.
 
 ### Usage
 
-```bash
-# Quick start: install pre-reqs, load keys, install credential helper.
+**Quick start: install pre-reqs, load keys, install credential helper.**
 - Converted everything to chezmoi which pulls deps for me now:
 - I bootstrap from a private rc repo by using a public gist file like this. 
+```bash
 source <(curl -fsLS https://gist.githubusercontent.com/redog/8472dd896a39413a43a76618d2b12ab1/raw/f6753977db292e71468ec7d2c3359a0d58dab105/puss-in-bootstrap.sh)
-- chezmoi handles my pre-reqs in a run_once_before_install_prereqs.sh script. 
- #https://gist.github.com/redog/2f97dcaab1564f55c17f0ba431ecfc2f
-source <(curl -fsLS get.chezmoi.io) -- init --apply git@github.com:redog/rc.git
-
-# You could also just export the GH_TOKEN env variable manually before init --apply like:
- - Install chezmoi natively
-
 ```
+- chezmoi handles my pre-reqs in a run_once_before_install_prereqs.sh script. 
+ *(See: https://gist.github.com/redog/2f97dcaab1564f55c17f0ba431ecfc2f)*
+```bash
+source <(curl -fsLS get.chezmoi.io) -- init --apply git@github.com:redog/rc.git
+```
+
+**You could also just export the GH_TOKEN env variable manually before init --apply like:**
+- Install chezmoi natively:
+```bash
 sh -c "$(curl -fsLS get.chezmoi.io)"
 ```
 
- - Init and apply using the token in the URL
-
-```
-  ~/bin/chezmoi init --apply https://oauth2:${GH_TOKEN}@github.com/${YOUR_USERNAME}/dotfiles.git
+- Init and apply using the token in the URL:
+```bash
+~/bin/chezmoi init --apply https://oauth2:${GH_TOKEN}@github.com/${YOUR_USERNAME}/dotfiles.git
 ```
  
-# Local clone, with options:
+**Local clone, with options:**
+```bash
 source ./init.sh --reload         # force key reload
 source ./init.sh --reconfigure    # re-prompt for git identity
-source ./init.sh --menu        # set up env and run interactive menu
-./init.sh                          # executed (not sourced) — env stays in subshell
+source ./init.sh --menu           # set up env and run interactive menu
+./init.sh                         # executed (not sourced) — env stays in subshell
 ```
 
 Exposed functions after sourcing:
