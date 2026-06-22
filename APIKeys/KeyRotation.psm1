@@ -57,7 +57,8 @@ function Update-VaultAPIKey {
     # 3. Use BWS CLI to edit the secret
     try {
         # The BWS CLI secret edit command updates the value
-        $editOutput = & bws secret edit $secretId --value $NewValue -o json | ConvertFrom-Json
+        $bwsCliPath = if ([string]::IsNullOrWhiteSpace($script:BwsCliPath)) { 'bws' } else { $script:BwsCliPath }
+        $editOutput = & $bwsCliPath secret edit $secretId --value $NewValue -o json | ConvertFrom-Json
         
         if ($null -eq $editOutput -or $editOutput.id -ne $secretId) {
             throw "Unexpected output from bws CLI."

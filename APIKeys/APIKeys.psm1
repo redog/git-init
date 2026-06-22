@@ -325,7 +325,9 @@ function Save-GitInitCredential {
             $Value | & secret-tool store --label="git-init: $Key" service $svc account $Key 2>$null
         }
         'none' {
-            Write-Warning "No keychain backend available. Install libsecret (provides secret-tool) on Linux to persist sessions across shells."
+            if ($VerbosePreference -ne 'SilentlyContinue') {
+                Write-Warning "No keychain backend available. Install libsecret (provides secret-tool) on Linux to persist sessions across shells."
+            }
         }
     }
 }

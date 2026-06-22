@@ -359,7 +359,7 @@ gi_keychain_save() {
           service "$_GI_KEYCHAIN_SERVICE" account "$key" 2>/dev/null
       ;;
     none)
-      echo "Warning: no keychain backend found. Install libsecret (provides secret-tool) to persist sessions across shells." >&2
+      _gi_log_e 2 "Warning: no keychain backend found. Install libsecret (provides secret-tool) to persist sessions across shells."
       return 1
       ;;
   esac
@@ -730,20 +730,24 @@ gi_gh_new_repo() {
 gi_ensure_credential_helper() {
   local helper="$HOME/.config/git-credential-env"
   [[ -f "$helper" ]] && return 0
+
+  local cli
+  cli=$(gi_config_get '.BwsCliPath // "bws"')
+
   mkdir -p "$HOME/.config"
-  cat >"$helper" <<'EOF'
+  cat >"$helper" <<EOF
 #!/usr/bin/env bash
 set -eu
-op=${1:-}
-while IFS= read -r line && [[ -n $line ]]; do :; done
-[[ $op == get ]] || exit 0
-token=${GITHUB_ACCESS_TOKEN:-}
-if [[ -z $token ]]; then
-    [[ -n ${GH_TOKEN_ID:-} ]] || { echo "GH_TOKEN_ID not set" >&2; exit 1; }
-    token=$(bws secret get "$GH_TOKEN_ID" -o json | jq -r .value)
+op=\${1:-}
+while IFS= read -r line && [[ -n \$line ]]; do :; done
+[[ \$op == get ]] || exit 0
+token=\${GITHUB_ACCESS_TOKEN:-}
+if [[ -z \$token ]]; then
+    [[ -n \${GH_TOKEN_ID:-} ]] || { echo "GH_TOKEN_ID not set" >&2; exit 1; }
+    token=\$($cli secret get "\$GH_TOKEN_ID" -o json | jq -r .value)
 fi
 echo "username=x-access-token"
-echo "password=$token"
+echo "password=\$token"
 EOF
   chmod +x "$helper"
 }
