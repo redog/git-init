@@ -3,6 +3,9 @@
 Tools to streamline the initialization and cloning of GitHub repositories,
 with integrated secret management using Bitwarden / Bitwarden Secrets Manager.
 
+Initially built as a shell script for secrets management but has grown into a 
+vibe coded prototype that's escaped containment.
+
 Two front-ends share a **single JSON configuration file** and the same key-map
 schema:
 
