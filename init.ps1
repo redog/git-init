@@ -1,8 +1,10 @@
 # Main entry point for the Git-Init script
+[CmdletBinding()]
 param(
     [switch]$Menu,
     [switch]$Reconfigure,
-    [switch]$Reload
+    [switch]$Reload,
+    [switch]$Quiet
 )
 
 $ScriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
@@ -18,6 +20,10 @@ $UserHome = if ($HOME -and (Test-Path -LiteralPath $HOME -PathType Container)) {
 Import-Module (Join-Path $ScriptDir "APIKeys") -Force
 Import-Module (Join-Path $ScriptDir "GitInit") -Force
 Import-Module (Join-Path $ScriptDir "APIKeys" "KeyRotation") -Force
+
+# Set verbosity: 0=quiet 1=normal(default) 2=verbose (-Verbose is a PS common param)
+$_verbosity = if ($Quiet) { 0 } elseif ($VerbosePreference -eq 'Continue') { 2 } else { 1 }
+Set-GitInitVerbosity -Level $_verbosity
 
 # Load configuration. JSON is canonical (shared with init.sh); .psd1 kept for back-compat.
 $configPath = $null
@@ -68,7 +74,7 @@ if (-not $configPath) {
 }
 
 if ($configPath) {
-    Write-Host "Loading configuration from $configPath..."
+    Write-GitInitLog -Level 1 -Message "Loading configuration from $configPath..."
     try {
         Import-APIKeysConfig -Path $configPath
     }
@@ -99,13 +105,13 @@ if ($configPath) {
                 $shouldLoadKeys = $true
             }
             else {
-                Write-Host "API Keys already loaded. Use -Reload to force reload."
+                Write-GitInitLog -Level 1 -Message "API Keys already loaded. Use -Reload to force reload."
             }
         }
     }
 
     if ($shouldLoadKeys) {
-        Write-Host "Loading API Keys..."
+        Write-GitInitLog -Level 1 -Message "Loading API Keys..."
         Set-AllAPIKeys
     }
 }

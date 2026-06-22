@@ -264,6 +264,28 @@ function Set-APIKeysConfigField {
 
 # endregion
 
+# region: verbosity
+# 0=quiet  1=normal(default)  2=verbose
+$script:Verbosity = 1
+
+function Set-GitInitVerbosity {
+    [CmdletBinding()]
+    param([ValidateRange(0, 2)][int]$Level = 1)
+    $script:Verbosity = $Level
+}
+
+function script:Write-GitInitLog {
+    param([int]$Level, [string]$Message, [System.ConsoleColor]$Color = [System.ConsoleColor]::White)
+    if ($script:Verbosity -ge $Level) {
+        if ($Color -ne [System.ConsoleColor]::White) {
+            Write-Host $Message -ForegroundColor $Color
+        } else {
+            Write-Host $Message
+        }
+    }
+}
+# endregion
+
 # region: OS keychain integration
 # Supported backends (auto-detected):
 #   windows     - Windows Credential Manager (PasswordVault WinRT API)
@@ -455,12 +477,12 @@ function Connect-Bitwarden {
         Remove-Item -Path Env:BWS_ACCESS_TOKEN -ErrorAction SilentlyContinue
 
         if ($env:BW_CLIENTID -and $env:BW_CLIENTSECRET) {
-            Write-Host "🤖 Logging in with API Key..." -ForegroundColor Cyan
+            Write-GitInitLog -Level 1 -Message "🤖 Logging in with API Key..." -Color Cyan
             $session = bw login --apikey --raw
             if ($LASTEXITCODE -ne 0) { throw "API Key login failed." }
         }
         else {
-            Write-Host "👤 Logging in interactively..." -ForegroundColor Cyan
+            Write-GitInitLog -Level 1 -Message "👤 Logging in interactively..." -Color Cyan
             $session = bw login --raw
             if ($LASTEXITCODE -ne 0) { throw "Interactive login failed." }
         }
@@ -468,7 +490,7 @@ function Connect-Bitwarden {
         if (-not [string]::IsNullOrWhiteSpace($session)) {
             $env:BW_SESSION = $session.Trim()
             Save-GitInitCredential -Key 'bw_session' -Value $env:BW_SESSION
-            Write-Host "BW session saved to keychain." -ForegroundColor DarkGray
+            Write-GitInitLog -Level 2 -Message "BW session saved to keychain." -Color DarkGray
         }
 
         $status = bw status | ConvertFrom-Json
@@ -481,14 +503,15 @@ function Connect-Bitwarden {
         Remove-Item -Path Env:BW_SESSION       -ErrorAction SilentlyContinue
         Remove-Item -Path Env:BWS_ACCESS_TOKEN -ErrorAction SilentlyContinue
 
-        Write-Host "🔓 Unlocking Vault..." -ForegroundColor Cyan
+        Write-GitInitLog -Level 1 -Message "🔓 Unlocking Vault..." -Color Cyan
         $session = bw unlock --raw
         if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($session)) {
             throw "Failed to unlock bw vault (could not obtain session key)."
         }
         $env:BW_SESSION = $session.Trim()
         Save-GitInitCredential -Key 'bw_session' -Value $env:BW_SESSION
-        Write-Host "✅ Vault unlocked." -ForegroundColor Green
+        Write-GitInitLog -Level 2 -Message "BW session saved to keychain." -Color DarkGray
+        Write-GitInitLog -Level 1 -Message "✅ Vault unlocked." -Color Green
     }
 }
 
@@ -527,7 +550,7 @@ function Get-BwsAccessToken {
 
         $env:BWS_ACCESS_TOKEN = $token.Trim()
         Save-GitInitCredential -Key 'bws_token' -Value $env:BWS_ACCESS_TOKEN
-        Write-Host "BWS token saved to keychain." -ForegroundColor DarkGray
+        Write-GitInitLog -Level 2 -Message "BWS token saved to keychain." -Color DarkGray
     }
 
     if (-not (Get-Command $script:BwsCliPath -ErrorAction SilentlyContinue)) {
@@ -597,7 +620,7 @@ function Set-APIKeysFromMapEntry {
         Write-Verbose "$envName set."
     }
 
-    if (-not $Quiet) { Write-Host "$name loaded." }
+    if (-not $Quiet) { Write-GitInitLog -Level 2 -Message "$name loaded." }
     return $true
 }
 
@@ -648,7 +671,7 @@ function Set-AllAPIKeys {
     }
 
     if (-not $Quiet) {
-        Write-Host "API keys loaded. Success: $ok  Failed: $fail"
+        Write-GitInitLog -Level 1 -Message "API keys loaded. Success: $ok  Failed: $fail"
     }
 
     [pscustomobject]@{ Success = $ok; Failed = $fail; Total = $ok + $fail }
@@ -680,5 +703,6 @@ Export-ModuleMember -Function `
     Show-APIKeysConfig, Save-APIKeysConfig, Get-APIKeysConfigPath, `
     Initialize-APIKeysConfigFile, Add-APIKey, Remove-APIKey, Set-APIKeysConfigField, `
     Save-GitInitCredential, Get-GitInitCredential, Remove-GitInitCredential, `
-    Save-GitInitSession, Restore-GitInitSession, Clear-GitInitSession `
+    Save-GitInitSession, Restore-GitInitSession, Clear-GitInitSession, `
+    Set-GitInitVerbosity, Write-GitInitLog `
     -Alias load_keys

@@ -8,6 +8,10 @@
 GI_VERSION="0.2.0"
 MYINIT="git-init"
 
+# 0=quiet  1=normal(default)  2=verbose
+# Set per-invocation by -q/--quiet and -v/--verbose in _gi_main_body.
+_GI_VERBOSITY=1
+
 # Sourced-vs-executed detection.
 _GI_SOURCED=0
 if [ -n "${ZSH_VERSION:-}" ]; then
@@ -38,6 +42,17 @@ gi_fail() {
   shift || true
   [[ $# -gt 0 ]] && echo "$*" >&2
   return "$code"
+}
+
+# Print to stdout/stderr only if _GI_VERBOSITY meets the requested level.
+# Always returns 0 so callers are safe inside set -e contexts.
+_gi_log() {
+  local level="$1"; shift
+  (( ${_GI_VERBOSITY:-1} >= level )) && printf '%s\n' "$*" || true
+}
+_gi_log_e() {
+  local level="$1"; shift
+  (( ${_GI_VERBOSITY:-1} >= level )) && printf '%s\n' "$*" >&2 || true
 }
 
 #==============================================================================
@@ -426,16 +441,16 @@ gi_connect_bitwarden() {
     unset BW_SESSION BWS_ACCESS_TOKEN
     local session
     if [[ -n "${BW_CLIENTID:-}" && -n "${BW_CLIENTSECRET:-}" ]]; then
-      echo "🤖 Logging in to Bitwarden CLI with API key..."
+      _gi_log 1 "🤖 Logging in to Bitwarden CLI with API key..."
       session=$(BW_CLIENTID="$BW_CLIENTID" BW_CLIENTSECRET="$BW_CLIENTSECRET" bw login --apikey --raw) \
         || { echo "API key login failed." >&2; return 1; }
     else
-      echo "👤 Logging in to Bitwarden CLI..."
+      _gi_log 1 "👤 Logging in to Bitwarden CLI..."
       session=$(bw login --raw) || { echo "Interactive login failed." >&2; return 1; }
     fi
     export BW_SESSION="$session"
     gi_keychain_save "bw_session" "$session" \
-      && echo "BW session saved to keychain." >&2
+      && _gi_log_e 2 "BW session saved to keychain."
     status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo "")
   fi
 
@@ -444,14 +459,14 @@ gi_connect_bitwarden() {
     gi_keychain_clear "bw_session"
     gi_keychain_clear "bws_token"
     unset BW_SESSION BWS_ACCESS_TOKEN
-    echo "🔓 Unlocking Bitwarden vault..."
+    _gi_log 1 "🔓 Unlocking Bitwarden vault..."
     local session
     session=$(bw unlock --raw) || { echo "Unlock failed." >&2; return 1; }
     [[ -n "$session" ]] || { echo "Empty session returned by bw unlock." >&2; return 1; }
     export BW_SESSION="$session"
     gi_keychain_save "bw_session" "$session" \
-      && echo "BW session saved to keychain." >&2
-    echo "✅ Vault unlocked."
+      && _gi_log_e 2 "BW session saved to keychain."
+    _gi_log 1 "✅ Vault unlocked."
   fi
   return 0
 }
@@ -490,7 +505,7 @@ gi_get_bws_token() {
 
   export BWS_ACCESS_TOKEN="$token"
   gi_keychain_save "bws_token" "$token" \
-    && echo "BWS token saved to keychain." >&2
+    && _gi_log_e 2 "BWS token saved to keychain."
 
   local cli
   cli=$(gi_config_get '.BwsCliPath // "bws"')
@@ -584,11 +599,11 @@ EOF
       export "$env_name=$value"
     done < <(echo "$entry" | jq -r '.Env | to_entries[] | "\(.key)\t\(.value)"')
 
-    (( quiet )) || echo "$name loaded."
+    (( quiet )) || _gi_log 2 "$name loaded."
     ((ok++)) || true
   done <<< "$entries"
 
-  (( quiet )) || echo "API keys loaded. Success: $ok  Failed: $fail"
+  (( quiet )) || _gi_log 1 "API keys loaded. Success: $ok  Failed: $fail"
   (( fail == 0 ))
 }
 
@@ -869,8 +884,8 @@ gi_print_help() {
 git-init $GI_VERSION
 
 Usage:
-  source init.sh [--reload] [--reconfigure] [--menu]
-  ./init.sh     [--reload] [--reconfigure]
+  source init.sh [--reload] [--reconfigure] [--menu] [-v] [-q]
+  ./init.sh     [--reload] [--reconfigure] [-v] [-q]
 
 Options:
   --reload        Force reload of API keys even if env vars are already set.
@@ -878,6 +893,8 @@ Options:
                   reading existing values.
   --menu          (sourced only) Set up keys/credential helper and run the
                   interactive menu.
+  -v, --verbose   Print per-key load messages and keychain save confirmations.
+  -q, --quiet     Print nothing (errors to stderr still appear).
   -h, --help      Show this help.
 
 Functions exposed when sourced:
@@ -917,12 +934,15 @@ _gi_main_body() {
   set -euo pipefail
 
   local reconfigure=0 reload=0 show_menu=0
+  _GI_VERBOSITY=1   # reset to default; flags below may override
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --reconfigure) reconfigure=1; shift ;;
-      --reload)      reload=1; shift ;;
-      --menu)     show_menu=1; shift ;;
-      -h|--help)     gi_print_help; return 0 ;;
+      --reconfigure)    reconfigure=1; shift ;;
+      --reload)         reload=1; shift ;;
+      --menu)           show_menu=1; shift ;;
+      -v|--verbose)     _GI_VERBOSITY=2; shift ;;
+      -q|--quiet)       _GI_VERBOSITY=0; shift ;;
+      -h|--help)        gi_print_help; return 0 ;;
       *) echo "Unknown argument: $1" >&2; gi_print_help >&2; return 2 ;;
     esac
   done
@@ -944,7 +964,7 @@ _gi_main_body() {
     # gi_config_init already populated _GI_CONFIG_JSON / _GI_CONFIG_PATH
     # in-memory; no need to re-read from disk.
   fi
-  echo "Loaded configuration from $_GI_CONFIG_PATH."
+  _gi_log 1 "Loaded configuration from $_GI_CONFIG_PATH."
 
   # Sanity check: the KeyMap must contain at least one entry, otherwise
   # we can't load anything.
@@ -977,7 +997,7 @@ _gi_main_body() {
   fi
 
   if (( should_load )); then
-    echo "Loading API Keys..."
+    _gi_log 1 "Loading API Keys..."
     if ! gi_load_keys; then
       echo "" >&2
       echo "Some keys failed to load. Common fixes:" >&2
@@ -989,7 +1009,7 @@ _gi_main_body() {
       return 1
     fi
   else
-    echo "API Keys already loaded. Use --reload to force reload."
+    _gi_log 1 "API Keys already loaded. Use --reload to force reload."
   fi
 
   [[ -n "${GITHUB_ACCESS_TOKEN:-}" ]] \
