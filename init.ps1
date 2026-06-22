@@ -112,7 +112,7 @@ if ($configPath) {
 
     if ($shouldLoadKeys) {
         Write-GitInitLog -Level 1 -Message "Loading API Keys..."
-        Set-AllAPIKeys
+        Set-AllAPIKeys -NoCache:$Reload
     }
 }
 else {

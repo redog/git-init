@@ -423,10 +423,10 @@ function Restore-GitInitSession {
 function Clear-GitInitSession {
     <#
     .SYNOPSIS
-        Removes BW_SESSION and BWS_ACCESS_TOKEN from the OS keychain and from the current environment.
+        Removes all git-init credentials from the OS keychain and unsets them in the environment.
     .DESCRIPTION
-        Call this when a session has expired and you want to force a fresh Bitwarden unlock
-        on the next run of the script (e.g. after a BWS token rotation).
+        Clears BW_SESSION, BWS_ACCESS_TOKEN, and every cached secret value (keyed by SecretId).
+        Call this after a token rotation or to force a full re-authentication on the next run.
     #>
     [CmdletBinding()]
     param()
@@ -434,6 +434,15 @@ function Clear-GitInitSession {
     Remove-GitInitCredential -Key 'bws_token'
     Remove-Item -Path Env:BW_SESSION       -ErrorAction SilentlyContinue
     Remove-Item -Path Env:BWS_ACCESS_TOKEN -ErrorAction SilentlyContinue
+
+    # Clear cached secret values keyed by each entry's SecretId.
+    foreach ($entry in $script:KeyMap) {
+        $secretId = $entry.SecretId
+        if (-not [string]::IsNullOrWhiteSpace($secretId)) {
+            Remove-GitInitCredential -Key "secret:$secretId"
+        }
+    }
+
     Write-Host "Session cleared from keychain." -ForegroundColor DarkGray
 }
 
@@ -593,7 +602,8 @@ function Set-APIKeysFromMapEntry {
     param(
         [Parameter(Mandatory)]
         [hashtable]$Entry,
-        [switch]$Quiet
+        [switch]$Quiet,
+        [switch]$NoCache
     )
 
     $name     = $Entry.Name
@@ -602,10 +612,21 @@ function Set-APIKeysFromMapEntry {
 
     Write-Verbose "Loading $name..."
 
-    $secret = Get-BwsSecretValue -SecretId $secretId -Verbose:$VerbosePreference
+    # Try OS keychain first; fall back to BWS on a miss or -NoCache.
+    $secret = $null
+    if (-not $NoCache) {
+        $cached = Get-GitInitCredential -Key "secret:$secretId"
+        if (-not [string]::IsNullOrWhiteSpace($cached)) { $secret = $cached }
+    }
+
     if (-not $secret) {
-        Write-Warning "Could not load $name (SecretId: $secretId)."
-        return $false
+        $secret = Get-BwsSecretValue -SecretId $secretId -Verbose:$VerbosePreference
+        if (-not $secret) {
+            Write-Warning "Could not load $name (SecretId: $secretId)."
+            return $false
+        }
+        Save-GitInitCredential -Key "secret:$secretId" -Value $secret
+        Write-GitInitLog -Level 2 -Message "$name cached in keychain." -Color DarkGray
     }
 
     foreach ($kv in $envMap.GetEnumerator()) {
@@ -636,7 +657,8 @@ function Set-AllAPIKeys {
         # Filter by Name OR by env var name
         [string[]]$Only,
         [string[]]$Except,
-        [switch]$Quiet
+        [switch]$Quiet,
+        [switch]$NoCache
     )
 
     # Bootstrap bws token from bw (prompts if bw is locked)
@@ -667,7 +689,7 @@ function Set-AllAPIKeys {
     $fail = 0
 
     foreach ($e in $entries) {
-        if (Set-APIKeysFromMapEntry -Entry $e -Quiet:$Quiet -Verbose:$VerbosePreference) { $ok++ } else { $fail++ }
+        if (Set-APIKeysFromMapEntry -Entry $e -Quiet:$Quiet -NoCache:$NoCache -Verbose:$VerbosePreference) { $ok++ } else { $fail++ }
     }
 
     if (-not $Quiet) {

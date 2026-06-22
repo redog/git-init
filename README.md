@@ -61,13 +61,25 @@ treating them as personal config keeps your repo clean.
 
 ---
 
-## OS Keychain Session Caching
+## OS Keychain Caching
 
-After the first successful Bitwarden unlock, both implementations store the vault
-session (`BW_SESSION`) and the BWS service-account token (`BWS_ACCESS_TOKEN`) in
-the OS native credential store. Every subsequent shell reads the cached tokens
-first — the master password prompt only reappears when the session genuinely
-expires or is revoked.
+Both implementations cache credentials in the OS native credential store so that
+new shells load without any network calls or password prompts.
+
+**What gets cached:**
+
+| Credential | Key | Purpose |
+| --- | --- | --- |
+| Bitwarden vault session | `bw_session` | Skips `bw unlock` master-password prompt |
+| BWS service-account token | `bws_token` | Skips fetching the token from the vault |
+| Each secret value | `secret:<uuid>` | Skips `bws secret get` network call per key |
+
+The last point is the most impactful. Every `bws secret get` is an HTTPS round-trip
+(~100–300 ms each). With a full warm cache the entire load sequence is local
+keychain reads — startup is essentially instantaneous regardless of how many keys
+are in your `KeyMap`.
+
+**Platform backends:**
 
 | Platform | Backend                                   | Requirement                                                          |
 | -------- | ----------------------------------------- | -------------------------------------------------------------------- |
@@ -75,16 +87,25 @@ expires or is revoked.
 | Linux    | GNOME Keyring / libsecret (`secret-tool`) | `app-crypt/libsecret` (Gentoo) · `libsecret-tools` (Debian / Ubuntu) |
 | Windows  | Windows Credential Manager (WinRT API)    | Built-in, no setup needed                                            |
 
-To force a full re-authentication (e.g. after a token rotation or suspected
-compromise), clear the keychain entries before re-sourcing:
+**Cache invalidation:**
+
+The cache stays valid until you explicitly clear it. Use `--reload` / `-Reload`
+to bypass the secret cache and re-fetch fresh values from BWS (e.g. after
+rotating a secret), or clear everything at once before re-sourcing:
 
 ```bash
-# bash / zsh
+# bash / zsh — bypass cache for this run only
+source init.sh --reload
+
+# bash / zsh — wipe all cached credentials (session + every secret)
 gi_session_clear && source init.sh
 ```
 
 ```powershell
-# PowerShell
+# PowerShell — bypass cache for this run only
+. ./init.ps1 -Reload
+
+# PowerShell — wipe all cached credentials (session + every secret)
 Clear-GitInitSession; . ./init.ps1
 ```
 

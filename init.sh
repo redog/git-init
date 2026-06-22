@@ -407,6 +407,15 @@ gi_session_clear() {
   gi_keychain_clear "bw_session"
   gi_keychain_clear "bws_token"
   unset BW_SESSION BWS_ACCESS_TOKEN
+
+  # Clear cached secret values keyed by each entry's SecretId.
+  if [[ -n "$_GI_CONFIG_JSON" ]] || gi_load_config 2>/dev/null; then
+    local _sid
+    while IFS= read -r _sid; do
+      [[ -n "$_sid" ]] && gi_keychain_clear "secret:$_sid"
+    done < <(printf '%s' "$_GI_CONFIG_JSON" | jq -r '.KeyMap[].SecretId')
+  fi
+
   echo "Session cleared from keychain." >&2
 }
 
@@ -550,15 +559,16 @@ _gi_in_csv() {
 }
 
 gi_load_keys() {
-  local only="" except="" quiet=0
+  local only="" except="" quiet=0 nocache=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --only)   only="$2"; shift 2 ;;
-      --except) except="$2"; shift 2 ;;
-      --quiet)  quiet=1; shift ;;
+      --only)     only="$2"; shift 2 ;;
+      --except)   except="$2"; shift 2 ;;
+      --quiet)    quiet=1; shift ;;
+      --no-cache) nocache=1; shift ;;
       -h|--help)
         cat <<EOF
-Usage: gi_load_keys [--only N1,N2] [--except N1,N2] [--quiet]
+Usage: gi_load_keys [--only N1,N2] [--except N1,N2] [--quiet] [--no-cache]
 EOF
         return 0 ;;
       *) echo "gi_load_keys: unknown option '$1'" >&2; return 1 ;;
@@ -584,11 +594,20 @@ EOF
     if [[ -n "$only" ]] && ! _gi_in_csv "$name" "$only"; then continue; fi
     if [[ -n "$except" ]] && _gi_in_csv "$name" "$except"; then continue; fi
 
-    local secret
-    if ! secret=$(gi_get_secret "$secret_id") || [[ -z "$secret" ]]; then
-      echo "Could not load $name (SecretId: $secret_id)." >&2
-      ((fail++)) || true
-      continue
+    # Try OS keychain first; fall back to BWS on a miss or --no-cache.
+    local secret=""
+    if (( ! nocache )); then
+      secret=$(gi_keychain_load "secret:$secret_id") || true
+    fi
+
+    if [[ -z "$secret" ]]; then
+      if ! secret=$(gi_get_secret "$secret_id") || [[ -z "$secret" ]]; then
+        echo "Could not load $name (SecretId: $secret_id)." >&2
+        ((fail++)) || true
+        continue
+      fi
+      gi_keychain_save "secret:$secret_id" "$secret" \
+        && _gi_log_e 2 "$name cached in keychain."
     fi
 
     while IFS=$'\t' read -r env_name value; do
@@ -998,7 +1017,9 @@ _gi_main_body() {
 
   if (( should_load )); then
     _gi_log 1 "Loading API Keys..."
-    if ! gi_load_keys; then
+    local _load_args=()
+    (( reload )) && _load_args+=(--no-cache)
+    if ! gi_load_keys "${_load_args[@]}"; then
       echo "" >&2
       echo "Some keys failed to load. Common fixes:" >&2
       echo "  - Verify the SecretId with: bws secret list" >&2
