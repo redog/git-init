@@ -26,7 +26,7 @@ Both implementations read the same configuration file. Lookup order:
 **You don't need to author this file by hand.** Run `init.sh` or `init.ps1`
 with no existing config and it will prompt you for the BWS token-item and your
 GitHub PAT secret UUID, then write `~/.git-init.json` for you. From there you
-manage the file with shell/PS functions — never with a text editor.
+manage the file with shell/PS functions.
 
 Copy `config.sample.json` to `config.json` only if you prefer a static template:
 
