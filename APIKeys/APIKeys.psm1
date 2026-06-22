@@ -264,6 +264,159 @@ function Set-APIKeysConfigField {
 
 # endregion
 
+# region: OS keychain integration
+# Supported backends (auto-detected):
+#   windows     - Windows Credential Manager (PasswordVault WinRT API)
+#   macos       - macOS Keychain via the bundled `security` CLI
+#   secret-tool - Linux GNOME Keyring / libsecret (install: app-crypt/libsecret)
+#   none        - no backend; sessions will not persist across shells
+
+function script:Get-KeychainBackend {
+    if ($IsWindows)   { return 'windows' }
+    if ($IsMacOS)     { return 'macos' }
+    if (Get-Command secret-tool -ErrorAction SilentlyContinue) { return 'secret-tool' }
+    return 'none'
+}
+
+function Save-GitInitCredential {
+    <#
+    .SYNOPSIS
+        Saves a credential to the OS keychain under the git-init service.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $Key,
+        [Parameter(Mandatory)] [string] $Value
+    )
+    $svc = 'git-init'
+    switch (Get-KeychainBackend) {
+        'windows' {
+            [void][Windows.Security.Credentials.PasswordVault,Windows.Security.Credentials,ContentType=WindowsRuntime]
+            $vault = New-Object Windows.Security.Credentials.PasswordVault
+            try { $vault.Remove($vault.Retrieve($svc, $Key)) } catch {}
+            $vault.Add((New-Object Windows.Security.Credentials.PasswordCredential($svc, $Key, $Value)))
+        }
+        'macos' {
+            & security add-generic-password -s $svc -a $Key -w $Value -U 2>$null
+        }
+        'secret-tool' {
+            $Value | & secret-tool store --label="git-init: $Key" service $svc account $Key 2>$null
+        }
+        'none' {
+            Write-Warning "No keychain backend available. Install libsecret (provides secret-tool) on Linux to persist sessions across shells."
+        }
+    }
+}
+
+function Get-GitInitCredential {
+    <#
+    .SYNOPSIS
+        Retrieves a credential from the OS keychain under the git-init service.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $Key
+    )
+    $svc = 'git-init'
+    switch (Get-KeychainBackend) {
+        'windows' {
+            try {
+                [void][Windows.Security.Credentials.PasswordVault,Windows.Security.Credentials,ContentType=WindowsRuntime]
+                $vault = New-Object Windows.Security.Credentials.PasswordVault
+                $c = $vault.Retrieve($svc, $Key)
+                $c.RetrievePassword()
+                return $c.Password
+            } catch { return $null }
+        }
+        'macos' {
+            $out = & security find-generic-password -s $svc -a $Key -w 2>$null
+            if ($LASTEXITCODE -eq 0) { return $out } else { return $null }
+        }
+        'secret-tool' {
+            $out = & secret-tool lookup service $svc account $Key 2>$null
+            if ($LASTEXITCODE -eq 0) { return $out } else { return $null }
+        }
+        'none' { return $null }
+    }
+}
+
+function Remove-GitInitCredential {
+    <#
+    .SYNOPSIS
+        Removes a credential from the OS keychain under the git-init service.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $Key
+    )
+    $svc = 'git-init'
+    switch (Get-KeychainBackend) {
+        'windows' {
+            try {
+                [void][Windows.Security.Credentials.PasswordVault,Windows.Security.Credentials,ContentType=WindowsRuntime]
+                $vault = New-Object Windows.Security.Credentials.PasswordVault
+                $vault.Remove($vault.Retrieve($svc, $Key))
+            } catch {}
+        }
+        'macos' {
+            & security delete-generic-password -s $svc -a $Key 2>$null | Out-Null
+        }
+        'secret-tool' {
+            & secret-tool clear service $svc account $Key 2>$null
+        }
+        'none' {}
+    }
+}
+
+function Save-GitInitSession {
+    <#
+    .SYNOPSIS
+        Saves BW_SESSION and BWS_ACCESS_TOKEN to the OS keychain.
+    #>
+    [CmdletBinding()]
+    param()
+    if ($env:BW_SESSION) {
+        Save-GitInitCredential -Key 'bw_session' -Value $env:BW_SESSION
+        Write-Host "BW session saved to keychain." -ForegroundColor DarkGray
+    }
+    if ($env:BWS_ACCESS_TOKEN) {
+        Save-GitInitCredential -Key 'bws_token' -Value $env:BWS_ACCESS_TOKEN
+        Write-Host "BWS token saved to keychain." -ForegroundColor DarkGray
+    }
+}
+
+function Restore-GitInitSession {
+    <#
+    .SYNOPSIS
+        Restores BW_SESSION and BWS_ACCESS_TOKEN from the OS keychain into the current environment.
+    #>
+    [CmdletBinding()]
+    param()
+    $val = Get-GitInitCredential -Key 'bw_session'
+    if (-not [string]::IsNullOrWhiteSpace($val)) { $env:BW_SESSION = $val }
+    $val = Get-GitInitCredential -Key 'bws_token'
+    if (-not [string]::IsNullOrWhiteSpace($val)) { $env:BWS_ACCESS_TOKEN = $val }
+}
+
+function Clear-GitInitSession {
+    <#
+    .SYNOPSIS
+        Removes BW_SESSION and BWS_ACCESS_TOKEN from the OS keychain and from the current environment.
+    .DESCRIPTION
+        Call this when a session has expired and you want to force a fresh Bitwarden unlock
+        on the next run of the script (e.g. after a BWS token rotation).
+    #>
+    [CmdletBinding()]
+    param()
+    Remove-GitInitCredential -Key 'bw_session'
+    Remove-GitInitCredential -Key 'bws_token'
+    Remove-Item -Path Env:BW_SESSION       -ErrorAction SilentlyContinue
+    Remove-Item -Path Env:BWS_ACCESS_TOKEN -ErrorAction SilentlyContinue
+    Write-Host "Session cleared from keychain." -ForegroundColor DarkGray
+}
+
+# endregion
+
 # region: bitwarden bootstrap
 function Connect-Bitwarden {
     <#
@@ -271,12 +424,11 @@ function Connect-Bitwarden {
         Ensures the Bitwarden CLI is logged in and unlocked.
     .DESCRIPTION
         Checks 'bw status'.
-        - If unauthenticated:
-            - Uses API Key login if Env:BW_CLIENTID and Env:BW_CLIENTSECRET are present.
-            - Otherwise falls back to interactive 'bw login'.
-        - If locked:
-            - Checks for Env:BW_SESSION.
-            - If missing, prompts for unlock (interactive or via password env if supported) and sets BW_SESSION.
+        - Restores a saved BW session from the OS keychain before checking status.
+        - If unauthenticated: purges stale keychain entries, then logs in via API key
+          or interactive prompt, and saves the new session to the keychain.
+        - If locked: purges stale keychain entries, unlocks interactively, and saves
+          the new session to the keychain.
     #>
     [CmdletBinding()]
     param()
@@ -285,12 +437,23 @@ function Connect-Bitwarden {
         throw "Bitwarden CLI 'bw' not found in PATH."
     }
 
-    # --- 1. Authentication Check ---
-    $status = bw status | ConvertFrom-Json
-    if ($status.status -eq 'unauthenticated') {
-        Write-Verbose "Bitwarden is unauthenticated."
+    # Restore a previously saved BW session from the OS keychain.
+    if (-not $env:BW_SESSION) {
+        $cached = Get-GitInitCredential -Key 'bw_session'
+        if (-not [string]::IsNullOrWhiteSpace($cached)) {
+            $env:BW_SESSION = $cached
+        }
+    }
 
-        # Check for Environment Variables for Headless/API Login
+    $status = bw status | ConvertFrom-Json
+
+    if ($status.status -eq 'unauthenticated') {
+        Write-Verbose "Bitwarden is unauthenticated — clearing stale keychain entries."
+        Remove-GitInitCredential -Key 'bw_session'
+        Remove-GitInitCredential -Key 'bws_token'
+        Remove-Item -Path Env:BW_SESSION       -ErrorAction SilentlyContinue
+        Remove-Item -Path Env:BWS_ACCESS_TOKEN -ErrorAction SilentlyContinue
+
         if ($env:BW_CLIENTID -and $env:BW_CLIENTSECRET) {
             Write-Host "🤖 Logging in with API Key..." -ForegroundColor Cyan
             $session = bw login --apikey --raw
@@ -304,28 +467,28 @@ function Connect-Bitwarden {
 
         if (-not [string]::IsNullOrWhiteSpace($session)) {
             $env:BW_SESSION = $session.Trim()
+            Save-GitInitCredential -Key 'bw_session' -Value $env:BW_SESSION
+            Write-Host "BW session saved to keychain." -ForegroundColor DarkGray
         }
 
-        # Refresh status after login attempt
         $status = bw status | ConvertFrom-Json
     }
 
-    # --- 2. Unlock/Session Check ---
     if ($status.status -eq 'locked') {
-        if (-not $env:BW_SESSION) {
-            Write-Host "🔓 Unlocking Vault..." -ForegroundColor Cyan
+        # Vault locked — any cached session has expired; clear it and unlock.
+        Remove-GitInitCredential -Key 'bw_session'
+        Remove-GitInitCredential -Key 'bws_token'
+        Remove-Item -Path Env:BW_SESSION       -ErrorAction SilentlyContinue
+        Remove-Item -Path Env:BWS_ACCESS_TOKEN -ErrorAction SilentlyContinue
 
-            # Note: Even with API Key, we need to unlock to decrypt data
-            # Use --raw to get just the session key string
-            $session = bw unlock --raw
-
-            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($session)) {
-                throw "Failed to unlock bw vault (could not obtain session key)."
-            }
-
-            $env:BW_SESSION = $session.Trim()
-            Write-Host "✅ Vault unlocked." -ForegroundColor Green
+        Write-Host "🔓 Unlocking Vault..." -ForegroundColor Cyan
+        $session = bw unlock --raw
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($session)) {
+            throw "Failed to unlock bw vault (could not obtain session key)."
         }
+        $env:BW_SESSION = $session.Trim()
+        Save-GitInitCredential -Key 'bw_session' -Value $env:BW_SESSION
+        Write-Host "✅ Vault unlocked." -ForegroundColor Green
     }
 }
 
@@ -334,6 +497,14 @@ function Get-BwsAccessToken {
     param(
         [string]$BwsTokenItemIdOrName = $script:BwsTokenItem
     )
+
+    if (-not $env:BWS_ACCESS_TOKEN) {
+        # Try the OS keychain for a previously saved BWS token (avoids BW unlock).
+        $cached = Get-GitInitCredential -Key 'bws_token'
+        if (-not [string]::IsNullOrWhiteSpace($cached)) {
+            $env:BWS_ACCESS_TOKEN = $cached
+        }
+    }
 
     if (-not $env:BWS_ACCESS_TOKEN) {
         Connect-Bitwarden
@@ -355,6 +526,8 @@ function Get-BwsAccessToken {
         }
 
         $env:BWS_ACCESS_TOKEN = $token.Trim()
+        Save-GitInitCredential -Key 'bws_token' -Value $env:BWS_ACCESS_TOKEN
+        Write-Host "BWS token saved to keychain." -ForegroundColor DarkGray
     }
 
     if (-not (Get-Command $script:BwsCliPath -ErrorAction SilentlyContinue)) {
@@ -495,8 +668,7 @@ function Clear-APIKeyEnv {
     }
 
     if ($ClearBitwardenSession) {
-        Remove-Item -Path Env:BW_SESSION -ErrorAction SilentlyContinue
-        Remove-Item -Path Env:BWS_ACCESS_TOKEN -ErrorAction SilentlyContinue
+        Clear-GitInitSession
     }
 }
 # endregion
@@ -506,5 +678,7 @@ Export-ModuleMember -Function `
     Get-BwsSecretValue, Get-APIKeyMap, Set-AllAPIKeys, Clear-APIKeyEnv, `
     Set-APIKeysConfig, Import-APIKeysConfig, Connect-Bitwarden, `
     Show-APIKeysConfig, Save-APIKeysConfig, Get-APIKeysConfigPath, `
-    Initialize-APIKeysConfigFile, Add-APIKey, Remove-APIKey, Set-APIKeysConfigField `
+    Initialize-APIKeysConfigFile, Add-APIKey, Remove-APIKey, Set-APIKeysConfigField, `
+    Save-GitInitCredential, Get-GitInitCredential, Remove-GitInitCredential, `
+    Save-GitInitSession, Restore-GitInitSession, Clear-GitInitSession `
     -Alias load_keys

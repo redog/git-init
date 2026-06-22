@@ -309,6 +309,93 @@ gi_config_remove_key() {
 }
 
 #==============================================================================
+# OS keychain integration
+#==============================================================================
+# Supported backends (auto-detected):
+#   macos       - macOS Keychain via the bundled `security` CLI
+#   secret-tool - Linux GNOME Keyring / libsecret (install: app-crypt/libsecret)
+#   none        - no backend; sessions will not persist across shells
+#
+# Service name used for all stored credentials:
+_GI_KEYCHAIN_SERVICE="git-init"
+
+_gi_keychain_backend() {
+  case "${OSTYPE:-}" in
+    darwin*) echo "macos"; return ;;
+  esac
+  if command -v secret-tool &>/dev/null; then
+    echo "secret-tool"; return
+  fi
+  echo "none"
+}
+
+gi_keychain_save() {
+  local key="$1" value="$2"
+  local backend
+  backend=$(_gi_keychain_backend)
+  case "$backend" in
+    macos)
+      security add-generic-password \
+        -s "$_GI_KEYCHAIN_SERVICE" -a "$key" -w "$value" -U 2>/dev/null
+      ;;
+    secret-tool)
+      printf '%s' "$value" | \
+        secret-tool store --label="git-init: $key" \
+          service "$_GI_KEYCHAIN_SERVICE" account "$key" 2>/dev/null
+      ;;
+    none)
+      echo "Warning: no keychain backend found. Install libsecret (provides secret-tool) to persist sessions across shells." >&2
+      return 1
+      ;;
+  esac
+}
+
+gi_keychain_load() {
+  local key="$1"
+  local backend
+  backend=$(_gi_keychain_backend)
+  case "$backend" in
+    macos)
+      security find-generic-password \
+        -s "$_GI_KEYCHAIN_SERVICE" -a "$key" -w 2>/dev/null
+      ;;
+    secret-tool)
+      secret-tool lookup \
+        service "$_GI_KEYCHAIN_SERVICE" account "$key" 2>/dev/null
+      ;;
+    none)
+      return 1
+      ;;
+  esac
+}
+
+gi_keychain_clear() {
+  local key="$1"
+  local backend
+  backend=$(_gi_keychain_backend)
+  case "$backend" in
+    macos)
+      security delete-generic-password \
+        -s "$_GI_KEYCHAIN_SERVICE" -a "$key" 2>/dev/null || true
+      ;;
+    secret-tool)
+      secret-tool clear \
+        service "$_GI_KEYCHAIN_SERVICE" account "$key" 2>/dev/null || true
+      ;;
+    none)
+      return 0
+      ;;
+  esac
+}
+
+gi_session_clear() {
+  gi_keychain_clear "bw_session"
+  gi_keychain_clear "bws_token"
+  unset BW_SESSION BWS_ACCESS_TOKEN
+  echo "Session cleared from keychain." >&2
+}
+
+#==============================================================================
 # bitwarden / bws bootstrap
 #==============================================================================
 
@@ -321,10 +408,22 @@ _gi_bws() {
 gi_connect_bitwarden() {
   command -v bw &>/dev/null || { echo "Bitwarden CLI 'bw' not found in PATH." >&2; return 1; }
 
+  # Restore a previously saved BW session from the OS keychain.
+  if [[ -z "${BW_SESSION:-}" ]]; then
+    local _cached_session
+    _cached_session=$(gi_keychain_load "bw_session") \
+      && [[ -n "$_cached_session" ]] \
+      && export BW_SESSION="$_cached_session"
+  fi
+
   local status
   status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo "")
 
   if [[ "$status" == "unauthenticated" || -z "$status" ]]; then
+    # Any cached session is now invalid — purge it before prompting.
+    gi_keychain_clear "bw_session"
+    gi_keychain_clear "bws_token"
+    unset BW_SESSION BWS_ACCESS_TOKEN
     local session
     if [[ -n "${BW_CLIENTID:-}" && -n "${BW_CLIENTSECRET:-}" ]]; then
       echo "🤖 Logging in to Bitwarden CLI with API key..."
@@ -335,15 +434,23 @@ gi_connect_bitwarden() {
       session=$(bw login --raw) || { echo "Interactive login failed." >&2; return 1; }
     fi
     export BW_SESSION="$session"
+    gi_keychain_save "bw_session" "$session" \
+      && echo "BW session saved to keychain." >&2
     status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo "")
   fi
 
-  if [[ "$status" == "locked" && -z "${BW_SESSION:-}" ]]; then
+  if [[ "$status" == "locked" ]]; then
+    # Vault locked — the cached session (if any) has expired; clear it and unlock.
+    gi_keychain_clear "bw_session"
+    gi_keychain_clear "bws_token"
+    unset BW_SESSION BWS_ACCESS_TOKEN
     echo "🔓 Unlocking Bitwarden vault..."
     local session
     session=$(bw unlock --raw) || { echo "Unlock failed." >&2; return 1; }
     [[ -n "$session" ]] || { echo "Empty session returned by bw unlock." >&2; return 1; }
     export BW_SESSION="$session"
+    gi_keychain_save "bw_session" "$session" \
+      && echo "BW session saved to keychain." >&2
     echo "✅ Vault unlocked."
   fi
   return 0
@@ -353,6 +460,11 @@ gi_get_bws_token() {
   if [[ -n "${BWS_ACCESS_TOKEN:-}" ]]; then
     return 0
   fi
+
+  # Try the OS keychain for a previously saved BWS token (avoids BW unlock).
+  local _cached_bws
+  _cached_bws=$(gi_keychain_load "bws_token") && [[ -n "$_cached_bws" ]] \
+    && export BWS_ACCESS_TOKEN="$_cached_bws" && return 0
 
   gi_connect_bitwarden || return 1
 
@@ -377,6 +489,8 @@ gi_get_bws_token() {
   fi
 
   export BWS_ACCESS_TOKEN="$token"
+  gi_keychain_save "bws_token" "$token" \
+    && echo "BWS token saved to keychain." >&2
 
   local cli
   cli=$(gi_config_get '.BwsCliPath // "bws"')
@@ -489,7 +603,7 @@ gi_clear_keys() {
   done < <(echo "$_GI_CONFIG_JSON" | jq -r '.KeyMap[].Env | keys[]')
 
   if (( clear_session )); then
-    unset BW_SESSION BWS_ACCESS_TOKEN
+    gi_session_clear
   fi
 }
 
@@ -782,6 +896,12 @@ Functions exposed when sourced:
     gi_config_add_key [name] [secret-id] [VAR | VAR=value] [...]
     gi_config_remove_key <name>
 
+  OS keychain session (macOS Keychain / Linux libsecret):
+    gi_session_clear              Remove session from keychain and unset env vars
+    gi_keychain_save <key> <val>  Low-level: write a credential to the keychain
+    gi_keychain_load <key>        Low-level: read a credential from the keychain
+    gi_keychain_clear <key>       Low-level: delete a credential from the keychain
+
   Bitwarden / GitHub helpers:
     gi_connect_bitwarden
     gi_get_bws_token
@@ -865,6 +985,7 @@ _gi_main_body() {
       echo "  - Update an entry:           gi_config_add_key <name> <correct-uuid> <ENV_VAR>" >&2
       echo "  - Remove a bad entry:        gi_config_remove_key <name>" >&2
       echo "  - Show current config:       gi_config_show" >&2
+      echo "  - If BWS token expired:      gi_session_clear  (then re-source init.sh)" >&2
       return 1
     fi
   else
