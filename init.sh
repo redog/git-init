@@ -481,6 +481,14 @@ gi_connect_bitwarden() {
 }
 
 gi_get_bws_token() {
+  # Opportunistically restore BW_SESSION from the OS keychain if not set,
+  # so the user can use the 'bw' CLI tool even if we only need the 'bws' token.
+  if [[ -z "${BW_SESSION:-}" ]]; then
+    local _cached_session
+    _cached_session=$(gi_keychain_load "bw_session" 2>/dev/null || true)
+    [[ -n "$_cached_session" ]] && export BW_SESSION="$_cached_session"
+  fi
+
   if [[ -n "${BWS_ACCESS_TOKEN:-}" ]]; then
     return 0
   fi
