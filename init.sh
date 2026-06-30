@@ -487,28 +487,36 @@ gi_get_bws_token() {
   local nocache=0
   [[ "${1:-}" == "--no-cache" ]] && nocache=1
 
+  local force_unlock=0
+
   # Opportunistically restore BW_SESSION from the OS keychain if not set,
   # so the user can use the 'bw' CLI tool even if we only need the 'bws' token.
-  if [[ -z "${BW_SESSION:-}" ]] && (( ! nocache )); then
-    local _cached_session
-    _cached_session=$(gi_keychain_load "bw_session" 2>/dev/null || true)
-    [[ -n "$_cached_session" ]] && export BW_SESSION="$_cached_session"
+  if [[ -z "${BW_SESSION:-}" ]]; then
+    if (( ! nocache )); then
+      local _cached_session
+      _cached_session=$(gi_keychain_load "bw_session" 2>/dev/null || true)
+      [[ -n "$_cached_session" ]] && export BW_SESSION="$_cached_session"
+    else
+      force_unlock=1
+    fi
+  fi
+
+  # Try the OS keychain for a previously saved BWS token (avoids BW unlock).
+  if [[ -z "${BWS_ACCESS_TOKEN:-}" ]] && (( ! nocache )); then
+    local _cached_bws
+    _cached_bws=$(gi_keychain_load "bws_token") && [[ -n "$_cached_bws" ]] \
+      && export BWS_ACCESS_TOKEN="$_cached_bws"
+  fi
+
+  if [[ -z "${BWS_ACCESS_TOKEN:-}" ]] || (( force_unlock )); then
+    local _bw_args=()
+    (( nocache )) && _bw_args+=(--no-cache)
+    gi_connect_bitwarden "${_bw_args[@]}" || return 1
   fi
 
   if [[ -n "${BWS_ACCESS_TOKEN:-}" ]]; then
     return 0
   fi
-
-  # Try the OS keychain for a previously saved BWS token (avoids BW unlock).
-  if (( ! nocache )); then
-    local _cached_bws
-    _cached_bws=$(gi_keychain_load "bws_token") && [[ -n "$_cached_bws" ]] \
-      && export BWS_ACCESS_TOKEN="$_cached_bws" && return 0
-  fi
-
-  local _bw_args=()
-  (( nocache )) && _bw_args+=(--no-cache)
-  gi_connect_bitwarden "${_bw_args[@]}" || return 1
 
   local item_ref token_item token
   item_ref=$(gi_config_get '.BwsTokenItem // ""')
