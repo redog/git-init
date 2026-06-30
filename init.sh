@@ -433,6 +433,10 @@ gi_connect_bitwarden() {
   local nocache=0
   [[ "${1:-}" == "--no-cache" ]] && nocache=1
 
+  if (( nocache )); then
+    unset BW_SESSION BWS_ACCESS_TOKEN
+  fi
+
   command -v bw &>/dev/null || { echo "Bitwarden CLI 'bw' not found in PATH." >&2; return 1; }
 
   # Restore a previously saved BW session from the OS keychain unless --no-cache is specified.
@@ -486,6 +490,10 @@ gi_connect_bitwarden() {
 gi_get_bws_token() {
   local nocache=0
   [[ "${1:-}" == "--no-cache" ]] && nocache=1
+
+  if (( nocache )); then
+    unset BW_SESSION BWS_ACCESS_TOKEN
+  fi
 
   local force_unlock=0
 

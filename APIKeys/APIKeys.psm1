@@ -468,6 +468,11 @@ function Connect-Bitwarden {
         [switch]$NoCache
     )
 
+    if ($NoCache) {
+        Remove-Item -Path Env:BW_SESSION       -ErrorAction SilentlyContinue
+        Remove-Item -Path Env:BWS_ACCESS_TOKEN -ErrorAction SilentlyContinue
+    }
+
     if (-not (Get-Command bw -ErrorAction SilentlyContinue)) {
         throw "Bitwarden CLI 'bw' not found in PATH."
     }
@@ -534,6 +539,11 @@ function Get-BwsAccessToken {
         [string]$BwsTokenItemIdOrName = $script:BwsTokenItem,
         [switch]$NoCache
     )
+
+    if ($NoCache) {
+        Remove-Item -Path Env:BW_SESSION       -ErrorAction SilentlyContinue
+        Remove-Item -Path Env:BWS_ACCESS_TOKEN -ErrorAction SilentlyContinue
+    }
 
     # Opportunistically restore BW_SESSION from the OS keychain if not set,
     # so the user can use the 'bw' CLI tool even if we only need the 'bws' token.
