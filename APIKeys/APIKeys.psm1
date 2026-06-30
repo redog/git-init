@@ -464,9 +464,7 @@ function Connect-Bitwarden {
           the new session to the keychain.
     #>
     [CmdletBinding()]
-    param(
-        [switch]$NoCache
-    )
+    param()
 
     if (-not (Get-Command bw -ErrorAction SilentlyContinue)) {
         throw "Bitwarden CLI 'bw' not found in PATH."
