@@ -544,6 +544,8 @@ function Get-BwsAccessToken {
         }
     }
 
+    $forceUnlock = (-not $env:BW_SESSION -and $NoCache)
+
     if (-not $env:BWS_ACCESS_TOKEN) {
         # Try the OS keychain for a previously saved BWS token (avoids BW unlock).
         if (-not $NoCache) {
@@ -554,8 +556,11 @@ function Get-BwsAccessToken {
         }
     }
 
-    if (-not $env:BWS_ACCESS_TOKEN) {
+    if (-not $env:BWS_ACCESS_TOKEN -or $forceUnlock) {
         Connect-Bitwarden -NoCache:$NoCache
+    }
+
+    if (-not $env:BWS_ACCESS_TOKEN) {
         $item = bw get item $BwsTokenItemIdOrName | ConvertFrom-Json
 
         $token = $null
