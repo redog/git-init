@@ -430,10 +430,13 @@ _gi_bws() {
 }
 
 gi_connect_bitwarden() {
+  local nocache=0
+  [[ "${1:-}" == "--no-cache" ]] && nocache=1
+
   command -v bw &>/dev/null || { echo "Bitwarden CLI 'bw' not found in PATH." >&2; return 1; }
 
-  # Restore a previously saved BW session from the OS keychain.
-  if [[ -z "${BW_SESSION:-}" ]]; then
+  # Restore a previously saved BW session from the OS keychain unless --no-cache is specified.
+  if [[ -z "${BW_SESSION:-}" ]] && (( ! nocache )); then
     local _cached_session
     _cached_session=$(gi_keychain_load "bw_session") \
       && [[ -n "$_cached_session" ]] \
@@ -481,9 +484,12 @@ gi_connect_bitwarden() {
 }
 
 gi_get_bws_token() {
+  local nocache=0
+  [[ "${1:-}" == "--no-cache" ]] && nocache=1
+
   # Opportunistically restore BW_SESSION from the OS keychain if not set,
   # so the user can use the 'bw' CLI tool even if we only need the 'bws' token.
-  if [[ -z "${BW_SESSION:-}" ]]; then
+  if [[ -z "${BW_SESSION:-}" ]] && (( ! nocache )); then
     local _cached_session
     _cached_session=$(gi_keychain_load "bw_session" 2>/dev/null || true)
     [[ -n "$_cached_session" ]] && export BW_SESSION="$_cached_session"
@@ -494,11 +500,15 @@ gi_get_bws_token() {
   fi
 
   # Try the OS keychain for a previously saved BWS token (avoids BW unlock).
-  local _cached_bws
-  _cached_bws=$(gi_keychain_load "bws_token") && [[ -n "$_cached_bws" ]] \
-    && export BWS_ACCESS_TOKEN="$_cached_bws" && return 0
+  if (( ! nocache )); then
+    local _cached_bws
+    _cached_bws=$(gi_keychain_load "bws_token") && [[ -n "$_cached_bws" ]] \
+      && export BWS_ACCESS_TOKEN="$_cached_bws" && return 0
+  fi
 
-  gi_connect_bitwarden || return 1
+  local _bw_args=()
+  (( nocache )) && _bw_args+=(--no-cache)
+  gi_connect_bitwarden "${_bw_args[@]}" || return 1
 
   local item_ref token_item token
   item_ref=$(gi_config_get '.BwsTokenItem // ""')
@@ -584,7 +594,10 @@ EOF
   done
 
   [[ -n "$_GI_CONFIG_JSON" ]] || gi_load_config || return 1
-  gi_get_bws_token || return 1
+
+  local _bws_args=()
+  (( nocache )) && _bws_args+=(--no-cache)
+  gi_get_bws_token "${_bws_args[@]}" || return 1
 
   local entries
   entries=$(echo "$_GI_CONFIG_JSON" | jq -c '.KeyMap[]?')
