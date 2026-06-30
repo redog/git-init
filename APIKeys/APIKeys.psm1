@@ -532,6 +532,15 @@ function Get-BwsAccessToken {
         [string]$BwsTokenItemIdOrName = $script:BwsTokenItem
     )
 
+    # Opportunistically restore BW_SESSION from the OS keychain if not set,
+    # so the user can use the 'bw' CLI tool even if we only need the 'bws' token.
+    if (-not $env:BW_SESSION) {
+        $cachedSession = Get-GitInitCredential -Key 'bw_session'
+        if (-not [string]::IsNullOrWhiteSpace($cachedSession)) {
+            $env:BW_SESSION = $cachedSession
+        }
+    }
+
     if (-not $env:BWS_ACCESS_TOKEN) {
         # Try the OS keychain for a previously saved BWS token (avoids BW unlock).
         $cached = Get-GitInitCredential -Key 'bws_token'
