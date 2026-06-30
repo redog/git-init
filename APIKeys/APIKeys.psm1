@@ -464,14 +464,16 @@ function Connect-Bitwarden {
           the new session to the keychain.
     #>
     [CmdletBinding()]
-    param()
+    param(
+        [switch]$NoCache
+    )
 
     if (-not (Get-Command bw -ErrorAction SilentlyContinue)) {
         throw "Bitwarden CLI 'bw' not found in PATH."
     }
 
-    # Restore a previously saved BW session from the OS keychain.
-    if (-not $env:BW_SESSION) {
+    # Restore a previously saved BW session from the OS keychain unless NoCache is specified.
+    if (-not $env:BW_SESSION -and -not $NoCache) {
         $cached = Get-GitInitCredential -Key 'bw_session'
         if (-not [string]::IsNullOrWhiteSpace($cached)) {
             $env:BW_SESSION = $cached
@@ -529,12 +531,13 @@ function Connect-Bitwarden {
 function Get-BwsAccessToken {
     [CmdletBinding()]
     param(
-        [string]$BwsTokenItemIdOrName = $script:BwsTokenItem
+        [string]$BwsTokenItemIdOrName = $script:BwsTokenItem,
+        [switch]$NoCache
     )
 
     # Opportunistically restore BW_SESSION from the OS keychain if not set,
     # so the user can use the 'bw' CLI tool even if we only need the 'bws' token.
-    if (-not $env:BW_SESSION) {
+    if (-not $env:BW_SESSION -and -not $NoCache) {
         $cachedSession = Get-GitInitCredential -Key 'bw_session'
         if (-not [string]::IsNullOrWhiteSpace($cachedSession)) {
             $env:BW_SESSION = $cachedSession
@@ -543,14 +546,16 @@ function Get-BwsAccessToken {
 
     if (-not $env:BWS_ACCESS_TOKEN) {
         # Try the OS keychain for a previously saved BWS token (avoids BW unlock).
-        $cached = Get-GitInitCredential -Key 'bws_token'
-        if (-not [string]::IsNullOrWhiteSpace($cached)) {
-            $env:BWS_ACCESS_TOKEN = $cached
+        if (-not $NoCache) {
+            $cached = Get-GitInitCredential -Key 'bws_token'
+            if (-not [string]::IsNullOrWhiteSpace($cached)) {
+                $env:BWS_ACCESS_TOKEN = $cached
+            }
         }
     }
 
     if (-not $env:BWS_ACCESS_TOKEN) {
-        Connect-Bitwarden
+        Connect-Bitwarden -NoCache:$NoCache
         $item = bw get item $BwsTokenItemIdOrName | ConvertFrom-Json
 
         $token = $null
@@ -673,7 +678,7 @@ function Set-AllAPIKeys {
     )
 
     # Bootstrap bws token from bw (prompts if bw is locked)
-    Get-BwsAccessToken
+    Get-BwsAccessToken -NoCache:$NoCache
 
     $entries = $script:KeyMap
 
