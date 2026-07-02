@@ -447,10 +447,10 @@ gi_connect_bitwarden() {
       && export BW_SESSION="$_cached_session"
   fi
 
-  local status
-  status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo "")
+  local bw_status
+  bw_status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo "")
 
-  if [[ "$status" == "unauthenticated" || -z "$status" ]]; then
+  if [[ "$bw_status" == "unauthenticated" || -z "$bw_status" ]]; then
     # Any cached session is now invalid — purge it before prompting.
     gi_keychain_clear "bw_session"
     gi_keychain_clear "bws_token"
@@ -467,10 +467,10 @@ gi_connect_bitwarden() {
     export BW_SESSION="$session"
     gi_keychain_save "bw_session" "$session" \
       && _gi_log_e 2 "BW session saved to keychain."
-    status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo "")
+    bw_status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo "")
   fi
 
-  if [[ "$status" == "locked" ]]; then
+  if [[ "$bw_status" == "locked" ]]; then
     # Vault locked — the cached session (if any) has expired; clear it and unlock.
     gi_keychain_clear "bw_session"
     gi_keychain_clear "bws_token"
@@ -742,19 +742,19 @@ gi_gh_new_repo() {
   [[ -n "$name" ]] || { echo "Usage: gi_gh_new_repo <name>" >&2; return 1; }
   [[ -n "${GITHUB_ACCESS_TOKEN:-}" ]] || { echo "GITHUB_ACCESS_TOKEN is not set." >&2; return 1; }
 
-  local body status response http_body
+  local body http_status response http_body
   body=$(jq -n --arg n "$name" '{name:$n, description:"Created with git-init", private:true}')
   response=$(curl -sSL -w "\n%{http_code}" \
     -H "Authorization: Bearer $GITHUB_ACCESS_TOKEN" \
     -H "Accept: application/vnd.github.v3+json" \
     -d "$body" "https://api.github.com/user/repos")
-  status=$(echo "$response" | tail -n1)
+  http_status=$(echo "$response" | tail -n1)
   http_body=$(echo "$response" | sed '$d')
 
-  case "$status" in
+  case "$http_status" in
     201) echo "$http_body" | jq -r '.full_name'; return 0 ;;
     422) echo "Repository name '$name' already exists." >&2; return 1 ;;
-    *)   echo "Failed to create repository: HTTP $status" >&2
+    *)   echo "Failed to create repository: HTTP $http_status" >&2
          [[ -n "$http_body" ]] && echo "$http_body" >&2
          return 1 ;;
   esac

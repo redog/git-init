@@ -57,16 +57,16 @@ while true; do
   response=$(curl -sSL -w "%{http_code}" -H "Authorization: token $token" \
     -H "Accept: application/vnd.github.v3+json" \
     -d "$post_data" "$api_url")
-  status="${response: -3}"
+  http_status="${response: -3}"
   body="${response::-3}"
 
-  if [[ "$status" == "201" ]]; then
+  if [[ "$http_status" == "201" ]]; then
     echo "Successfully created repository \"$repo\""
     break # Exit loop on success
-  elif [[ "$status" == "422" ]]; then
+  elif [[ "$http_status" == "422" ]]; then
     echo "Repository name '$repo' is already taken. Please choose another one." >&2
   else
-    echo "Failed to create repository: HTTP $status" >&2
+    echo "Failed to create repository: HTTP $http_status" >&2
     [[ -n "$body" ]] && echo "$body" >&2
     exit 1
   fi
