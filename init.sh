@@ -761,8 +761,31 @@ gi_gh_new_repo() {
 }
 
 #==============================================================================
-# git credential helper
+# git credential helper & global config
 #==============================================================================
+
+gi_ensure_global_git_config() {
+  local reconfigure="${1:-0}"
+  local name email
+
+  if (( ! reconfigure )); then
+    name=$(git config --global user.name 2>/dev/null || true)
+  fi
+  if [[ -z "${name:-}" ]]; then
+    printf "Enter your full name for global git config: "
+    read -r name
+    [[ -n "$name" ]] && git config --global user.name "$name"
+  fi
+
+  if (( ! reconfigure )); then
+    email=$(git config --global user.email 2>/dev/null || true)
+  fi
+  if [[ -z "${email:-}" ]]; then
+    printf "Enter your email address for global git config: "
+    read -r email
+    [[ -n "$email" ]] && git config --global user.email "$email"
+  fi
+}
 
 gi_ensure_credential_helper() {
   local helper="$HOME/.config/git-credential-env"
@@ -803,17 +826,15 @@ gi_credential_helper_arg() {
 #==============================================================================
 
 gi_init_local_repo() {
-  local repo_name="$1" username="$2" full_name="$3" email="$4"
-  [[ -n "$repo_name" && -n "$username" && -n "$full_name" && -n "$email" ]] \
-    || { echo "Usage: gi_init_local_repo <repo> <gh-username> <full-name> <email>" >&2; return 1; }
+  local repo_name="$1" username="$2"
+  [[ -n "$repo_name" && -n "$username" ]] \
+    || { echo "Usage: gi_init_local_repo <repo> <gh-username>" >&2; return 1; }
   [[ -d "$repo_name" ]] && { echo "Directory '$repo_name' already exists." >&2; return 1; }
 
   mkdir "$repo_name" || return 1
   cd "$repo_name" || return 1
 
   git init
-  git config user.name "$full_name"
-  git config user.email "$email"
   git config credential.helper "$(gi_credential_helper_arg)"
 
   git remote add origin "https://github.com/$username/$repo_name.git"
@@ -833,7 +854,7 @@ gi_init_local_repo() {
 
 gi_flow_create() {
   local reconfigure="$1"
-  local repo_name username name email
+  local repo_name username
 
   printf "Enter the name for the new repository: "
   read -r repo_name
@@ -847,26 +868,10 @@ gi_flow_create() {
     read -r username
   fi
 
-  if (( ! reconfigure )); then
-    name=$(git config --global user.name 2>/dev/null || true)
-  fi
-  if [[ -z "${name:-}" ]]; then
-    printf "Enter your full name: "
-    read -r name
-  fi
-
-  if (( ! reconfigure )); then
-    email=$(git config --global user.email 2>/dev/null || true)
-  fi
-  if [[ -z "${email:-}" ]]; then
-    printf "Enter your email address: "
-    read -r email
-  fi
-
   local full
   if full=$(gi_gh_new_repo "$repo_name"); then
     echo "Repository '$full' created successfully."
-    gi_init_local_repo "$repo_name" "$username" "$name" "$email"
+    gi_init_local_repo "$repo_name" "$username"
   fi
 }
 
@@ -985,7 +990,7 @@ Functions exposed when sourced:
     gi_gh_user
     gi_gh_repos
     gi_gh_new_repo <name>
-    gi_init_local_repo <repo> <gh-username> <full-name> <email>
+    gi_init_local_repo <repo> <gh-username>
     gi_menu
 EOF
 }
@@ -1078,6 +1083,9 @@ _gi_main_body() {
     || { echo "GITHUB_ACCESS_TOKEN is not set after loading keys. Check your config's KeyMap." >&2; return 1; }
 
   gi_ensure_credential_helper
+
+  # Ensure global git identity is configured
+  gi_ensure_global_git_config "$reconfigure"
 
   if (( _GI_SOURCED && ! show_menu )); then
     return 0
