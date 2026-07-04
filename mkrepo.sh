@@ -98,7 +98,9 @@ if [[ -z $(git config --global --get push.default) ]]; then
   git config --global push.default simple
 fi
 
-repo_exists=$(curl -fsSL -H "Authorization: token ${token}" "https://api.github.com/repos/${username}/${repo}")
+# '|| true' so a failed lookup reaches the error message below instead of
+# aborting silently via set -e.
+repo_exists=$(curl -fsSL -H "Authorization: token ${token}" "https://api.github.com/repos/${username}/${repo}" || true)
 if [[ -z ${repo_exists} ]]; then
   echo "GitHub repo ${username}/${repo} does not exist" >&2
   exit 1
@@ -107,7 +109,7 @@ fi
 git remote add origin "https://github.com/${username}/${repo}.git"
 
 echo  "${repo} by ${username}" > README.md
-curl https://www.gnu.org/licenses/gpl-3.0.txt > LICENSE
+curl -fsSL https://www.gnu.org/licenses/gpl-3.0.txt > LICENSE
 
 git add .
 git commit -m "Initial commit"

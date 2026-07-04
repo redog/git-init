@@ -171,7 +171,7 @@ echo $PROFILE
 
 | Cmdlet / alias                     | Purpose                                                        |
 | ---------------------------------- | -------------------------------------------------------------- |
-| `Set-AllAPIKeys` / `load_keys`     | Load keys per `KeyMap` (`-Only`, `-Except`, `-Quiet`).         |
+| `Set-AllAPIKeys` / `load_keys`     | Load keys per `KeyMap` (`-Only`, `-Except`, `-Quiet`, `-NoCache`). |
 | `Clear-APIKeyEnv`                  | Unset all key-map env vars (`-ClearBitwardenSession`).         |
 | `Update-VaultAPIKey`               | Update a secret in BWS and reload it locally.                  |
 | `Get-APIKeyMap`                    | Print the loaded key map.                                      |
@@ -276,7 +276,7 @@ fi
 
 | Function                          | Purpose                                              |
 | --------------------------------- | ---------------------------------------------------- |
-| `gi_load_keys [--only N1,N2] [--except N1,N2] [--quiet]` | Load keys per `KeyMap`. Per-key messages shown only at `-v`. |
+| `gi_load_keys [--only N1,N2] [--except N1,N2] [--quiet] [--no-cache]` | Load keys per `KeyMap`. Per-key messages shown only at `-v`. |
 | `gi_clear_keys [--all]`           | Unset all key-map env vars (`--all` also clears session). |
 | `gi_update_key <name> [value]`    | Update a secret in BWS and reload it locally.        |
 | `gi_list_keys`                    | List `Name`, `SecretId`, env vars per entry.         |

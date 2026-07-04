@@ -66,7 +66,7 @@ function Initialize-LocalGitRepository {
         return
     }
 
-    New-Item -ItemType Directory -Name $RepoName
+    New-Item -ItemType Directory -Name $RepoName | Out-Null
     Set-Location $RepoName
 
     git init

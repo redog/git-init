@@ -25,6 +25,7 @@ Ensure you have the following installed and available in your PATH:
 *   **Bitwarden Secrets Manager** (`bws`)
 
         winget install Microsoft.VCRedist.2015+.x64
+        winget install Rustlang.Rustup
         ./MInstall-BWS.ps1
 
 ## Getting Started
@@ -37,7 +38,7 @@ Ensure you have the following installed and available in your PATH:
 
   1. The user must store their actual API key like GitHub's in the Bitwarden Secrets Manager.
   2. The Bitwarden Secrets Manager API key must be stored in the bitwarden vault.
-  3. Ceate or retrieve your Github access token.
+  3. Create or retrieve your GitHub access token.
     
          # Our example github access token
          github_pat_11111111112222222333333
@@ -54,7 +55,7 @@ Ensure you have the following installed and available in your PATH:
          -----------------------------------------------------------------------
          02c45a25-d69b-4540-a489-b3d1013ef541   git-init   2026-01-13 19:21:17
     
-    Armed with our new bws access token we can now store our other API tokens in it's secure vault.
+    Armed with our new bws access token we can now store our other API tokens in its secure vault.
           
           # Our example bws token
           eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMzQiLCJzY29wZSI6ImFwaSJ9.RmFrZVNpZ25hdHVyZQ
