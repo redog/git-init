@@ -51,13 +51,7 @@ function Initialize-LocalGitRepository {
         [string]$RepoName,
 
         [Parameter(Mandatory=$true)]
-        [string]$Username,
-
-        [Parameter(Mandatory=$true)]
-        [string]$Name,
-
-        [Parameter(Mandatory=$true)]
-        [string]$Email
+        [string]$Username
     )
 
     $repoDir = Join-Path -Path (Get-Location) -ChildPath $RepoName
@@ -70,8 +64,6 @@ function Initialize-LocalGitRepository {
     Set-Location $RepoName
 
     git init
-    git config user.name $Name
-    git config user.email $Email
 
     $helperScript = Join-Path $HOME ".config/git-credential-env"
     if ($IsLinux) {

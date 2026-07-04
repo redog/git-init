@@ -129,6 +129,29 @@ if (-not $env:GITHUB_ACCESS_TOKEN) {
     return
 }
 
+# Ensure global git identity is configured
+$gitName = $null
+if (-not $Reconfigure) {
+    $gitName = git config --global user.name
+}
+if ([string]::IsNullOrWhiteSpace($gitName)) {
+    $gitName = Read-Host "Enter your full name for global git config"
+    if (-not [string]::IsNullOrWhiteSpace($gitName)) {
+        git config --global user.name $gitName
+    }
+}
+
+$gitEmail = $null
+if (-not $Reconfigure) {
+    $gitEmail = git config --global user.email
+}
+if ([string]::IsNullOrWhiteSpace($gitEmail)) {
+    $gitEmail = Read-Host "Enter your email address for global git config"
+    if (-not [string]::IsNullOrWhiteSpace($gitEmail)) {
+        git config --global user.email $gitEmail
+    }
+}
+
 # Ensure git-credential-env exists on Linux/macOS
 if ($IsLinux -or $IsMacOS) {
     $configDir = Join-Path $UserHome ".config"
@@ -189,28 +212,10 @@ if ($Menu) {
             $username = Read-Host "Enter your GitHub username"
         }
 
-        # Determine Name
-        $name = $null
-        if (-not $Reconfigure) {
-            $name = git config --global user.name
-        }
-        if ([string]::IsNullOrWhiteSpace($name)) {
-            $name = Read-Host "Enter your full name"
-        }
-
-        # Determine Email
-        $email = $null
-        if (-not $Reconfigure) {
-            $email = git config --global user.email
-        }
-        if ([string]::IsNullOrWhiteSpace($email)) {
-            $email = Read-Host "Enter your email address"
-        }
-
         $repo = New-GHRepository -RepoName $repoName
         if ($repo) {
             Write-Host "Repository '$($repo.full_name)' created successfully."
-            Initialize-LocalGitRepository -RepoName $repoName -Username $username -Name $name -Email $email
+            Initialize-LocalGitRepository -RepoName $repoName -Username $username
         }
     }
     elseif ($choice -eq 1) {
