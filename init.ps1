@@ -26,11 +26,13 @@ $_verbosity = if ($Quiet) { 0 } elseif ($VerbosePreference -eq 'Continue') { 2 }
 Set-GitInitVerbosity -Level $_verbosity
 
 # Load configuration. JSON is canonical (shared with init.sh); .psd1 kept for back-compat.
+# Lookup order matches init.sh and the README: $GIT_INIT_CONFIG, ~/.git-init.json,
+# <repo>/config.json, then the legacy .psd1 fallbacks.
 $configPath = $null
 foreach ($candidate in @(
     $env:GIT_INIT_CONFIG,
-    (Join-Path $ScriptDir 'config.json'),
     (Join-Path $UserHome  '.git-init.json'),
+    (Join-Path $ScriptDir 'config.json'),
     (Join-Path $ScriptDir 'config.psd1'),
     (Join-Path $UserHome  '.git-init.psd1')
 )) {
@@ -112,7 +114,9 @@ if ($configPath) {
 
     if ($shouldLoadKeys) {
         Write-GitInitLog -Level 1 -Message "Loading API Keys..."
-        Set-AllAPIKeys -NoCache:$Reload
+        # Discard the summary object; Set-AllAPIKeys already logs a summary
+        # line, and emitting the object would break -Quiet.
+        $null = Set-AllAPIKeys -NoCache:$Reload
     }
 }
 else {
@@ -121,20 +125,22 @@ else {
 
 # Verify GitHub Token
 if (-not $env:GITHUB_ACCESS_TOKEN) {
-    Write-Error "GITHUB_ACCESS_TOKEN is not set. Please ensure config.psd1 maps a secret to this environment variable and that you have authenticated with Bitwarden."
+    Write-Error "GITHUB_ACCESS_TOKEN is not set. Please ensure your config's KeyMap maps a secret to this environment variable and that you have authenticated with Bitwarden."
     return
 }
 
 # Ensure git-credential-env exists on Linux/macOS
 if ($IsLinux -or $IsMacOS) {
-    $configDir = Join-Path $HOME ".config"
+    $configDir = Join-Path $UserHome ".config"
     if (-not (Test-Path $configDir)) {
         New-Item -ItemType Directory -Path $configDir | Out-Null
     }
 
     $helperScript = Join-Path $configDir "git-credential-env"
     if (-not (Test-Path $helperScript)) {
-        $bwsCliPath = $script:BwsCliPath
+        # $script:BwsCliPath lives in the APIKeys module scope, not this
+        # script's, so read it through the exported accessor.
+        $bwsCliPath = (Show-APIKeysConfig).BwsCliPath
         if ([string]::IsNullOrWhiteSpace($bwsCliPath)) { $bwsCliPath = 'bws' }
         $helperContent = @"
 #!/usr/bin/env bash
@@ -226,7 +232,7 @@ if ($Menu) {
             }
 
             # Clone using credential helper to avoid prompts
-            $helperScript = Join-Path $HOME ".config/git-credential-env"
+            $helperScript = Join-Path $UserHome ".config/git-credential-env"
             if ($IsLinux) {
                 git -c credential.helper=$helperScript clone "https://github.com/$selectedRepo.git"
             }

@@ -9,13 +9,14 @@ Data Files (`.psd1`) are still accepted for backwards compatibility.
 ## Features
 
 - **Secure Retrieval:** Fetches secrets directly from BWS into environment variables.
-- **Flexible Configuration:** Map any secret to any environment variable using a `.psd1` file.
+- **Flexible Configuration:** Map any secret to any environment variable using a JSON config file (legacy `.psd1` also accepted).
 - **Bitwarden Integration:** Automatically handles `bws` authentication using a BWS Access Token stored in your Bitwarden Vault.
 - **Session Management:** Can clear injected secrets from the environment.
 
 ## Configuration
 
-The module is configured using a hashtable, typically loaded from a `.psd1` file.
+The module is configured using a hashtable, typically loaded from a `.json` file
+(via `Import-APIKeysConfig`); legacy `.psd1` files are still supported.
 
 ### Config File Structure (`config.json`)
 

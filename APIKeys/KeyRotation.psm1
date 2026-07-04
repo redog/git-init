@@ -9,8 +9,9 @@ function Update-VaultAPIKey {
     .SYNOPSIS
         Updates an API key in Bitwarden Secrets Manager and reloads it into the current session.
     .DESCRIPTION
-        Takes an API key mapped in your config.psd1, updates its value in BWS using the CLI,
-        and then calls Set-AllAPIKeys to update your current environment variables.
+        Takes an API key mapped in your config (config.json, or legacy .psd1), updates its
+        value in BWS using the CLI, and then calls Set-AllAPIKeys to update your current
+        environment variables.
     .PARAMETER Name
         The friendly name of the key as defined in your KeyMap (e.g., 'GitHub', 'OpenAI').
     .PARAMETER NewValue
@@ -42,7 +43,7 @@ function Update-VaultAPIKey {
     $entry = $keyMap | Where-Object { $_.Name -eq $Name }
 
     if (-not $entry) {
-        throw "Could not find a key mapped to '$Name' in the configuration. Check your config.psd1."
+        throw "Could not find a key mapped to '$Name' in the configuration. Check your config with Show-APIKeysConfig."
     }
 
     $secretId = $entry.SecretId
@@ -56,8 +57,12 @@ function Update-VaultAPIKey {
 
     # 3. Use BWS CLI to edit the secret
     try {
-        # The BWS CLI secret edit command updates the value
-        $bwsCliPath = if ([string]::IsNullOrWhiteSpace($script:BwsCliPath)) { 'bws' } else { $script:BwsCliPath }
+        # The BWS CLI secret edit command updates the value. The configured
+        # CLI path lives in the APIKeys module scope (not this module's), so
+        # read it through the exported accessor — under StrictMode a bare
+        # $script:BwsCliPath reference here would throw.
+        $bwsCliPath = (Show-APIKeysConfig).BwsCliPath
+        if ([string]::IsNullOrWhiteSpace($bwsCliPath)) { $bwsCliPath = 'bws' }
         $editOutput = & $bwsCliPath secret edit $secretId --value $NewValue -o json | ConvertFrom-Json
         
         if ($null -eq $editOutput -or $editOutput.id -ne $secretId) {

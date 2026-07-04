@@ -272,7 +272,8 @@ gi_config_add_key() {
       [Gg]it[Hh]ub)        default_var="GITHUB_ACCESS_TOKEN" ;;
       [Oo]pen[Aa][Ii])     default_var="OPENAI_API_KEY" ;;
       [Aa]nthropic)        default_var="ANTHROPIC_API_KEY" ;;
-      *)                   default_var="$(echo "$name" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9' '_')_API_KEY" ;;
+      # printf (not echo) so the trailing newline isn't translated into a stray '_'.
+      *)                   default_var="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9' '_')_API_KEY" ;;
     esac
     local var
     printf "Environment variable name [%s]: " "$default_var"
@@ -948,7 +949,8 @@ Usage:
   ./init.sh     [--reload] [--reconfigure] [-v] [-q]
 
 Options:
-  --reload        Force reload of API keys even if env vars are already set.
+  --reload        Force reload of API keys even if env vars are already set,
+                  bypassing the OS keychain cache (re-fetches from BWS).
   --reconfigure   Re-prompt for git config (name, email, GitHub user) instead of
                   reading existing values.
   --menu          (sourced only) Set up keys/credential helper and run the
@@ -960,7 +962,7 @@ Options:
 Functions exposed when sourced:
 
   Key loading / management:
-    gi_load_keys [--only N1,N2] [--except N1,N2] [--quiet]
+    gi_load_keys [--only N1,N2] [--except N1,N2] [--quiet] [--no-cache]
     gi_clear_keys [--all]
     gi_update_key <name> [new-value]
     gi_list_keys
