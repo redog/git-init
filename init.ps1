@@ -4,7 +4,11 @@ param(
     [switch]$Menu,
     [switch]$Reconfigure,
     [switch]$Reload,
-    [switch]$Quiet
+    [switch]$Quiet,
+    # Opt-in: prompt once for the Bitwarden master password, validate it by
+    # unlocking the vault, and store it in the OS keychain so future unlocks
+    # never prompt. Remove it any time with Remove-GitInitMasterPassword.
+    [switch]$RememberPassword
 )
 
 $ScriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
@@ -83,6 +87,16 @@ if ($configPath) {
     catch {
         Write-Error "Failed to load configuration: $($_.Exception.Message)"
         return
+    }
+
+    # Store the master password before loading keys so the freshly validated
+    # session is reused by the load below (no second prompt). If it cannot be
+    # stored (e.g. bw not logged in yet), continue — the normal interactive
+    # flow still works and the user can run Save-GitInitMasterPassword later.
+    if ($RememberPassword) {
+        if (-not (Save-GitInitMasterPassword)) {
+            Write-Warning "Master password not stored; continuing."
+        }
     }
 
     # Load Keys (this sets env vars like GITHUB_ACCESS_TOKEN)
