@@ -319,7 +319,21 @@ function Save-GitInitCredential {
             $vault.Add((New-Object Windows.Security.Credentials.PasswordCredential($svc, $Key, $Value)))
         }
         'macos' {
-            & security add-generic-password -s $svc -a $Key -w $Value -U 2>$null
+            # Passing the value as `-w <value>` argv would expose it in the
+            # process list (`ps`) for the duration of the call, so feed the
+            # whole command to `security -i` on stdin instead. The interactive
+            # parser understands backslash escapes inside double quotes but
+            # only takes single-line commands, so values with embedded
+            # newlines fall back to the argv form.
+            if ($Value -match "[`r`n]") {
+                & security add-generic-password -s $svc -a $Key -w $Value -U 2>$null
+            }
+            else {
+                $escKey = $Key.Replace('\', '\\').Replace('"', '\"')
+                $escVal = $Value.Replace('\', '\\').Replace('"', '\"')
+                "add-generic-password -U -s `"$svc`" -a `"$escKey`" -w `"$escVal`"" |
+                    & security -i 2>$null | Out-Null
+            }
         }
         'secret-tool' {
             $Value | & secret-tool store --label="git-init: $Key" service $svc account $Key 2>$null
@@ -429,9 +443,17 @@ function Clear-GitInitSession {
     .DESCRIPTION
         Clears BW_SESSION, BWS_ACCESS_TOKEN, and every cached secret value (keyed by SecretId).
         Call this after a token rotation or to force a full re-authentication on the next run.
+
+        The stored master password (see Save-GitInitMasterPassword) is deliberately
+        kept unless -IncludeMasterPassword is given: sessions are expiring caches,
+        the password is a deliberate opt-in.
+    .PARAMETER IncludeMasterPassword
+        Also remove the stored Bitwarden master password from the keychain.
     #>
     [CmdletBinding()]
-    param()
+    param(
+        [switch]$IncludeMasterPassword
+    )
     Remove-GitInitCredential -Key 'bw_session'
     Remove-GitInitCredential -Key 'bws_token'
     Remove-Item -Path Env:BW_SESSION       -ErrorAction SilentlyContinue
@@ -445,7 +467,119 @@ function Clear-GitInitSession {
         }
     }
 
+    if ($IncludeMasterPassword) {
+        Remove-GitInitCredential -Key 'bw_master_password'
+        Write-Host "Master password removed from keychain." -ForegroundColor DarkGray
+    }
+
     Write-Host "Session cleared from keychain." -ForegroundColor DarkGray
+}
+
+#------------------------------------------------------------------------------
+# Master password storage (explicit opt-in)
+#------------------------------------------------------------------------------
+# Trade-off: cached sessions expire, the master password does not. Anything
+# that can read your unlocked login keychain / credential store can read it.
+# Storing it buys fully prompt-free unlocks (combined with BW_CLIENTID /
+# BW_CLIENTSECRET login, a fully headless cold start); only opt in on machines
+# where that trade is acceptable. Nothing here ever stores the password
+# without Save-GitInitMasterPassword being called (or init.ps1's
+# -RememberPassword switch, which calls it).
+
+function Save-GitInitMasterPassword {
+    <#
+    .SYNOPSIS
+        Opt-in: stores the Bitwarden master password in the OS keychain.
+    .DESCRIPTION
+        Prompts for the master password (never echoed; deliberately not accepted
+        as a parameter so it cannot leak into shell history), validates it by
+        actually unlocking the vault, and only stores it after a successful
+        unlock. Connect-Bitwarden then uses it to unlock without prompting.
+
+        Remove it with Remove-GitInitMasterPassword or
+        Clear-GitInitSession -IncludeMasterPassword.
+    .OUTPUTS
+        [bool] $true if the password was validated and stored.
+    #>
+    [CmdletBinding()]
+    param()
+
+    if ((Get-KeychainBackend) -eq 'none') {
+        Write-Error "No keychain backend available; refusing to store the master password. Install libsecret (provides secret-tool) on Linux."
+        return $false
+    }
+    if (-not (Get-Command bw -ErrorAction SilentlyContinue)) {
+        Write-Error "Bitwarden CLI 'bw' not found in PATH."
+        return $false
+    }
+    $status = (bw status | ConvertFrom-Json).status
+    if ($status -eq 'unauthenticated') {
+        Write-Error "Bitwarden CLI is not logged in, so the password cannot be validated. Run Connect-Bitwarden (or 'bw login') first."
+        return $false
+    }
+
+    $secure = Read-Host "Bitwarden master password (will be stored in the OS keychain)" -AsSecureString
+    $password = ConvertFrom-SecureString -SecureString $secure -AsPlainText
+    if ([string]::IsNullOrEmpty($password)) {
+        Write-Error "Empty password; nothing stored."
+        return $false
+    }
+
+    # Validate via the env-var handoff: never touches disk or argv.
+    $session = $null
+    try {
+        $env:BW_PASSWORD = $password
+        $session = bw unlock --passwordenv BW_PASSWORD --raw 2>$null
+        if ($LASTEXITCODE -ne 0) { $session = $null }
+    }
+    finally {
+        Remove-Item -Path Env:BW_PASSWORD -ErrorAction SilentlyContinue
+    }
+    if ([string]::IsNullOrWhiteSpace($session)) {
+        Write-Error "That password did not unlock the vault; nothing stored."
+        return $false
+    }
+
+    # The unlock we just did is a perfectly good session — keep it.
+    $env:BW_SESSION = $session.Trim()
+    Save-GitInitCredential -Key 'bw_session' -Value $env:BW_SESSION
+    Write-GitInitLog -Level 2 -Message "BW session saved to keychain." -Color DarkGray
+
+    Save-GitInitCredential -Key 'bw_master_password' -Value $password
+    # Read back to verify: the hardened macOS path pipes through `security -i`,
+    # whose exit status is not a reliable success signal.
+    if ((Get-GitInitCredential -Key 'bw_master_password') -cne $password) {
+        Remove-GitInitCredential -Key 'bw_master_password'
+        Write-Error "Stored master password failed read-back verification; check your keychain backend."
+        return $false
+    }
+    Write-Host "Master password saved to keychain. Remove it with Remove-GitInitMasterPassword." -ForegroundColor DarkGray
+    return $true
+}
+
+function Remove-GitInitMasterPassword {
+    <#
+    .SYNOPSIS
+        Removes the stored Bitwarden master password from the OS keychain.
+    #>
+    [CmdletBinding()]
+    param()
+    if ([string]::IsNullOrEmpty((Get-GitInitCredential -Key 'bw_master_password'))) {
+        Write-Host "No master password stored in the keychain."
+        return
+    }
+    Remove-GitInitCredential -Key 'bw_master_password'
+    Write-Host "Master password removed from keychain." -ForegroundColor DarkGray
+}
+
+function Test-GitInitMasterPassword {
+    <#
+    .SYNOPSIS
+        Returns $true if a Bitwarden master password is stored in the OS keychain.
+    #>
+    [CmdletBinding()]
+    param()
+    -not [string]::IsNullOrEmpty((Get-GitInitCredential -Key 'bw_master_password'))
 }
 
 # endregion
@@ -460,8 +594,9 @@ function Connect-Bitwarden {
         - Restores a saved BW session from the OS keychain before checking status.
         - If unauthenticated: purges stale keychain entries, then logs in via API key
           or interactive prompt, and saves the new session to the keychain.
-        - If locked: purges stale keychain entries, unlocks interactively, and saves
-          the new session to the keychain.
+        - If locked: purges stale keychain entries, unlocks with the stored master
+          password when one exists (see Save-GitInitMasterPassword) or interactively
+          otherwise, and saves the new session to the keychain.
     #>
     [CmdletBinding()]
     param(
@@ -516,15 +651,44 @@ function Connect-Bitwarden {
 
     if ($status.status -eq 'locked') {
         # Vault locked — any cached session has expired; clear it and unlock.
+        # Note: the stored master password is NOT purged here; being locked (or
+        # even logged out) does not make the password wrong. It is only removed
+        # when it actually fails to unlock, or explicitly by the user.
         Remove-GitInitCredential -Key 'bw_session'
         Remove-GitInitCredential -Key 'bws_token'
         Remove-Item -Path Env:BW_SESSION       -ErrorAction SilentlyContinue
         Remove-Item -Path Env:BWS_ACCESS_TOKEN -ErrorAction SilentlyContinue
 
-        Write-GitInitLog -Level 1 -Message "🔓 Unlocking Vault..." -Color Cyan
-        $session = bw unlock --raw
-        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($session)) {
-            throw "Failed to unlock bw vault (could not obtain session key)."
+        $session = $null
+        # A stored master password (opt-in via Save-GitInitMasterPassword)
+        # unlocks without prompting. The env-var handoff never touches disk or
+        # argv. If it stops working (password changed), remove it so we never
+        # loop on a bad credential, then fall through to the interactive prompt.
+        $storedPw = Get-GitInitCredential -Key 'bw_master_password'
+        if (-not [string]::IsNullOrEmpty($storedPw)) {
+            Write-GitInitLog -Level 1 -Message "🔓 Unlocking Vault with stored master password..." -Color Cyan
+            try {
+                $env:BW_PASSWORD = $storedPw
+                $session = bw unlock --passwordenv BW_PASSWORD --raw 2>$null
+                if ($LASTEXITCODE -ne 0) { $session = $null }
+            }
+            finally {
+                Remove-Item -Path Env:BW_PASSWORD -ErrorAction SilentlyContinue
+            }
+            if ([string]::IsNullOrWhiteSpace($session)) {
+                $session = $null
+                Remove-GitInitCredential -Key 'bw_master_password'
+                Write-Warning "Stored master password no longer unlocks the vault; removed it from the keychain."
+            }
+            $storedPw = $null
+        }
+
+        if (-not $session) {
+            Write-GitInitLog -Level 1 -Message "🔓 Unlocking Vault..." -Color Cyan
+            $session = bw unlock --raw
+            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($session)) {
+                throw "Failed to unlock bw vault (could not obtain session key)."
+            }
         }
         $env:BW_SESSION = $session.Trim()
         Save-GitInitCredential -Key 'bw_session' -Value $env:BW_SESSION
@@ -757,5 +921,6 @@ Export-ModuleMember -Function `
     Initialize-APIKeysConfigFile, Add-APIKey, Remove-APIKey, Set-APIKeysConfigField, `
     Save-GitInitCredential, Get-GitInitCredential, Remove-GitInitCredential, `
     Save-GitInitSession, Restore-GitInitSession, Clear-GitInitSession, `
+    Save-GitInitMasterPassword, Remove-GitInitMasterPassword, Test-GitInitMasterPassword, `
     Set-GitInitVerbosity, Write-GitInitLog `
     -Alias load_keys

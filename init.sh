@@ -5,7 +5,7 @@
 # Run executed for the interactive menu, or source for the env-loading flow plus
 # the gi_* helper functions (load/clear/update keys, GitHub API helpers, etc.).
 
-GI_VERSION="0.2.0"
+GI_VERSION="0.3.0"
 MYINIT="git-init"
 
 # 0=quiet  1=normal(default)  2=verbose
@@ -334,6 +334,10 @@ gi_config_remove_key() {
 #
 # Service name used for all stored credentials:
 _GI_KEYCHAIN_SERVICE="git-init"
+# Keychain account holding the (opt-in) Bitwarden master password.
+# Only ever written by gi_master_password_save; see that function for the
+# security trade-off.
+_GI_MASTER_PW_KEY="bw_master_password"
 
 _gi_keychain_backend() {
   case "${OSTYPE:-}" in
@@ -351,8 +355,22 @@ gi_keychain_save() {
   backend=$(_gi_keychain_backend)
   case "$backend" in
     macos)
-      security add-generic-password \
-        -s "$_GI_KEYCHAIN_SERVICE" -a "$key" -w "$value" -U 2>/dev/null
+      # Passing the value as `-w <value>` argv would expose it in the process
+      # list (`ps`) for the duration of the call, so feed the whole command to
+      # `security -i` on stdin instead. The interactive parser understands
+      # backslash escapes inside double quotes but only takes single-line
+      # commands, so values with embedded newlines fall back to the argv form.
+      if [[ "$value" == *$'\n'* ]]; then
+        security add-generic-password \
+          -s "$_GI_KEYCHAIN_SERVICE" -a "$key" -w "$value" -U 2>/dev/null
+      else
+        local esc_key esc_val
+        esc_key=${key//\\/\\\\};   esc_key=${esc_key//\"/\\\"}
+        esc_val=${value//\\/\\\\}; esc_val=${esc_val//\"/\\\"}
+        printf 'add-generic-password -U -s "%s" -a "%s" -w "%s"\n' \
+          "$_GI_KEYCHAIN_SERVICE" "$esc_key" "$esc_val" \
+          | security -i >/dev/null 2>&1
+      fi
       ;;
     secret-tool)
       printf '%s' "$value" | \
@@ -404,7 +422,37 @@ gi_keychain_clear() {
   esac
 }
 
+gi_session_save() {
+  # Save the current BW_SESSION / BWS_ACCESS_TOKEN env values to the keychain.
+  if [[ -n "${BW_SESSION:-}" ]]; then
+    gi_keychain_save "bw_session" "$BW_SESSION" \
+      && echo "BW session saved to keychain." >&2
+  fi
+  if [[ -n "${BWS_ACCESS_TOKEN:-}" ]]; then
+    gi_keychain_save "bws_token" "$BWS_ACCESS_TOKEN" \
+      && echo "BWS token saved to keychain." >&2
+  fi
+  return 0
+}
+
+gi_session_restore() {
+  # Restore BW_SESSION / BWS_ACCESS_TOKEN from the keychain into the environment.
+  local _v
+  _v=$(gi_keychain_load "bw_session" 2>/dev/null || true)
+  [[ -n "$_v" ]] && export BW_SESSION="$_v"
+  _v=$(gi_keychain_load "bws_token" 2>/dev/null || true)
+  [[ -n "$_v" ]] && export BWS_ACCESS_TOKEN="$_v"
+  return 0
+}
+
 gi_session_clear() {
+  # gi_session_clear [--all]
+  # Clears the cached session, BWS token, and secret values. The stored master
+  # password (see gi_master_password_save) is deliberately kept unless --all is
+  # given: sessions are expiring caches, the password is a deliberate opt-in.
+  local include_master=0
+  [[ "${1:-}" == "--all" ]] && include_master=1
+
   gi_keychain_clear "bw_session"
   gi_keychain_clear "bws_token"
   unset BW_SESSION BWS_ACCESS_TOKEN
@@ -417,7 +465,108 @@ gi_session_clear() {
     done < <(printf '%s' "$_GI_CONFIG_JSON" | jq -r '.KeyMap[].SecretId')
   fi
 
+  if (( include_master )); then
+    gi_keychain_clear "$_GI_MASTER_PW_KEY"
+    echo "Master password removed from keychain." >&2
+  fi
+
   echo "Session cleared from keychain." >&2
+}
+
+#------------------------------------------------------------------------------
+# Master password storage (explicit opt-in)
+#------------------------------------------------------------------------------
+# Trade-off: cached sessions expire, the master password does not. Anything
+# that can read your unlocked login keychain can read it. Storing it buys
+# fully prompt-free unlocks (combined with BW_CLIENTID/BW_CLIENTSECRET login,
+# a fully headless cold start); only opt in on machines where that trade is
+# acceptable. Nothing here ever stores the password without gi_master_password_save
+# being called (or the --remember-password flag, which calls it).
+
+gi_master_password_save() {
+  # Prompts for the Bitwarden master password (never accepted as an argument:
+  # argv leaks into shell history and `ps`), validates it by actually unlocking
+  # the vault, and only stores it after a successful unlock.
+  local backend
+  backend=$(_gi_keychain_backend)
+  if [[ "$backend" == "none" ]]; then
+    echo "No keychain backend available; refusing to store the master password." >&2
+    echo "Install libsecret (provides secret-tool) on Linux." >&2
+    return 1
+  fi
+  command -v bw &>/dev/null || { echo "Bitwarden CLI 'bw' not found in PATH." >&2; return 1; }
+
+  local bw_status
+  bw_status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo "")
+  if [[ "$bw_status" == "unauthenticated" || -z "$bw_status" ]]; then
+    echo "Bitwarden CLI is not logged in, so the password cannot be validated." >&2
+    echo "Run gi_connect_bitwarden (or 'bw login') first." >&2
+    return 1
+  fi
+
+  local pw
+  printf "Bitwarden master password (will be stored in the OS keychain): "
+  read -rs pw || true
+  echo
+  [[ -n "$pw" ]] || { echo "Empty password; nothing stored." >&2; return 1; }
+
+  local session
+  if ! session=$(BW_PASSWORD="$pw" bw unlock --passwordenv BW_PASSWORD --raw 2>/dev/null) \
+     || [[ -z "$session" ]]; then
+    unset pw
+    echo "That password did not unlock the vault; nothing stored." >&2
+    return 1
+  fi
+
+  # The unlock we just did is a perfectly good session — keep it.
+  export BW_SESSION="$session"
+  gi_keychain_save "bw_session" "$session" \
+    && _gi_log_e 2 "BW session saved to keychain."
+
+  if ! gi_keychain_save "$_GI_MASTER_PW_KEY" "$pw"; then
+    unset pw
+    echo "Failed to write the master password to the keychain." >&2
+    return 1
+  fi
+  # Read back to verify: the hardened macOS path pipes through `security -i`,
+  # whose exit status is not a reliable success signal.
+  local check
+  check=$(gi_keychain_load "$_GI_MASTER_PW_KEY" 2>/dev/null || true)
+  if [[ "$check" != "$pw" ]]; then
+    unset pw check
+    gi_keychain_clear "$_GI_MASTER_PW_KEY"
+    echo "Stored master password failed read-back verification; check your keychain backend." >&2
+    return 1
+  fi
+  unset pw check
+  echo "Master password saved to keychain. Remove it with gi_master_password_clear." >&2
+}
+
+gi_master_password_clear() {
+  local existing
+  existing=$(gi_keychain_load "$_GI_MASTER_PW_KEY" 2>/dev/null || true)
+  if [[ -z "$existing" ]]; then
+    echo "No master password stored in the keychain."
+    return 0
+  fi
+  gi_keychain_clear "$_GI_MASTER_PW_KEY"
+  echo "Master password removed from keychain."
+}
+
+gi_master_password_status() {
+  local backend
+  backend=$(_gi_keychain_backend)
+  echo "Keychain backend: $backend"
+  if [[ "$backend" == "none" ]]; then
+    echo "No master password stored (no keychain backend)."
+    return 1
+  fi
+  if [[ -n "$(gi_keychain_load "$_GI_MASTER_PW_KEY" 2>/dev/null || true)" ]]; then
+    echo "A master password is stored in the OS keychain."
+    return 0
+  fi
+  echo "No master password stored."
+  return 1
 }
 
 #==============================================================================
@@ -473,12 +622,33 @@ gi_connect_bitwarden() {
 
   if [[ "$bw_status" == "locked" ]]; then
     # Vault locked — the cached session (if any) has expired; clear it and unlock.
+    # Note: the stored master password is NOT purged here; being locked (or even
+    # logged out) does not make the password wrong. It is only removed when it
+    # actually fails to unlock, or explicitly by the user.
     gi_keychain_clear "bw_session"
     gi_keychain_clear "bws_token"
     unset BW_SESSION BWS_ACCESS_TOKEN
-    _gi_log 1 "🔓 Unlocking Bitwarden vault..."
-    local session
-    session=$(bw unlock --raw) || { echo "Unlock failed." >&2; return 1; }
+    local session=""
+    # A stored master password (opt-in via gi_master_password_save) unlocks
+    # without prompting. The env-var handoff never touches disk or argv. If it
+    # stops working (password changed), remove it so we never loop on a bad
+    # credential, then fall through to the interactive prompt.
+    local _stored_pw
+    _stored_pw=$(gi_keychain_load "$_GI_MASTER_PW_KEY" 2>/dev/null || true)
+    if [[ -n "$_stored_pw" ]]; then
+      _gi_log 1 "🔓 Unlocking Bitwarden vault with stored master password..."
+      session=$(BW_PASSWORD="$_stored_pw" bw unlock --passwordenv BW_PASSWORD --raw 2>/dev/null) \
+        || session=""
+      if [[ -z "$session" ]]; then
+        gi_keychain_clear "$_GI_MASTER_PW_KEY"
+        echo "Stored master password no longer unlocks the vault; removed it from the keychain." >&2
+      fi
+    fi
+    unset _stored_pw
+    if [[ -z "$session" ]]; then
+      _gi_log 1 "🔓 Unlocking Bitwarden vault..."
+      session=$(bw unlock --raw) || { echo "Unlock failed." >&2; return 1; }
+    fi
     [[ -n "$session" ]] || { echo "Empty session returned by bw unlock." >&2; return 1; }
     export BW_SESSION="$session"
     gi_keychain_save "bw_session" "$session" \
@@ -950,8 +1120,8 @@ gi_print_help() {
 git-init $GI_VERSION
 
 Usage:
-  source init.sh [--reload] [--reconfigure] [--menu] [-v] [-q]
-  ./init.sh     [--reload] [--reconfigure] [-v] [-q]
+  source init.sh [--reload] [--reconfigure] [--menu] [--remember-password] [-v] [-q]
+  ./init.sh     [--reload] [--reconfigure] [--remember-password] [-v] [-q]
 
 Options:
   --reload        Force reload of API keys even if env vars are already set,
@@ -960,6 +1130,11 @@ Options:
                   reading existing values.
   --menu          (sourced only) Set up keys/credential helper and run the
                   interactive menu.
+  --remember-password
+                  Opt-in: prompt once for the Bitwarden master password,
+                  validate it by unlocking the vault, and store it in the OS
+                  keychain so future unlocks never prompt. Remove it any time
+                  with gi_master_password_clear.
   -v, --verbose   Print per-key load messages and keychain save confirmations.
   -q, --quiet     Print nothing (errors to stderr still appear).
   -h, --help      Show this help.
@@ -981,7 +1156,14 @@ Functions exposed when sourced:
     gi_config_remove_key <name>
 
   OS keychain session (macOS Keychain / Linux libsecret):
-    gi_session_clear              Remove session from keychain and unset env vars
+    gi_session_clear [--all]      Remove session from keychain and unset env vars
+                                  (--all also removes the stored master password)
+    gi_session_save               Save current BW_SESSION / BWS_ACCESS_TOKEN to keychain
+    gi_session_restore            Restore BW_SESSION / BWS_ACCESS_TOKEN from keychain
+    gi_master_password_save       Opt-in: store the bw master password in the keychain
+                                  (validated with 'bw unlock' before storing)
+    gi_master_password_clear      Remove the stored master password from the keychain
+    gi_master_password_status     Report whether a master password is stored
     gi_keychain_save <key> <val>  Low-level: write a credential to the keychain
     gi_keychain_load <key>        Low-level: read a credential from the keychain
     gi_keychain_clear <key>       Low-level: delete a credential from the keychain
@@ -1000,16 +1182,17 @@ EOF
 _gi_main_body() {
   set -euo pipefail
 
-  local reconfigure=0 reload=0 show_menu=0
+  local reconfigure=0 reload=0 show_menu=0 remember_password=0
   _GI_VERBOSITY=1   # reset to default; flags below may override
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --reconfigure)    reconfigure=1; shift ;;
-      --reload)         reload=1; shift ;;
-      --menu)           show_menu=1; shift ;;
-      -v|--verbose)     _GI_VERBOSITY=2; shift ;;
-      -q|--quiet)       _GI_VERBOSITY=0; shift ;;
-      -h|--help)        gi_print_help; return 0 ;;
+      --reconfigure)        reconfigure=1; shift ;;
+      --reload)             reload=1; shift ;;
+      --menu)               show_menu=1; shift ;;
+      --remember-password)  remember_password=1; shift ;;
+      -v|--verbose)         _GI_VERBOSITY=2; shift ;;
+      -q|--quiet)           _GI_VERBOSITY=0; shift ;;
+      -h|--help)            gi_print_help; return 0 ;;
       *) echo "Unknown argument: $1" >&2; gi_print_help >&2; return 2 ;;
     esac
   done
@@ -1041,6 +1224,16 @@ _gi_main_body() {
     echo "KeyMap in $_GI_CONFIG_PATH is empty." >&2
     echo "Add an entry with: gi_config_add_key <name> <bws-secret-uuid> <ENV_VAR>" >&2
     return 1
+  fi
+
+  # Store the master password before loading keys so the freshly validated
+  # session is reused by the load below (no second prompt). If it cannot be
+  # stored (e.g. bw not logged in yet), continue — the normal interactive
+  # flow still works and the user can run gi_master_password_save later.
+  if (( remember_password )); then
+    if ! gi_master_password_save; then
+      echo "Master password not stored; continuing." >&2
+    fi
   fi
 
   local should_load=0

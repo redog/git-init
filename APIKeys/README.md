@@ -12,6 +12,8 @@ Data Files (`.psd1`) are still accepted for backwards compatibility.
 - **Flexible Configuration:** Map any secret to any environment variable using a JSON config file (legacy `.psd1` also accepted).
 - **Bitwarden Integration:** Automatically handles `bws` authentication using a BWS Access Token stored in your Bitwarden Vault.
 - **Session Management:** Can clear injected secrets from the environment.
+- **OS Keychain Caching:** Persists the vault session, BWS token, and secret values in the native credential store (Windows Credential Manager / macOS Keychain / Linux libsecret) so new shells load without prompts or network calls.
+- **Optional Master-Password Storage:** Explicit opt-in to store the Bitwarden master password in the OS keychain for fully prompt-free unlocks — with just as explicit removal.
 
 ## Configuration
 
@@ -95,3 +97,54 @@ Removes the environment variables set by the module.
 ```powershell
 Clear-APIKeyEnv -ClearBitwardenSession
 ```
+
+## Keychain & Session Functions
+
+All credentials are stored in the OS-native credential store under the
+`git-init` service (Windows Credential Manager, macOS Keychain, or Linux
+GNOME Keyring / libsecret via `secret-tool`).
+
+### `Clear-GitInitSession`
+
+Removes the cached vault session, BWS token, and every cached secret value
+from the keychain, and unsets them in the environment.
+
+- **`-IncludeMasterPassword`**: Also remove the stored master password (kept by default — sessions are expiring caches, the password is a deliberate opt-in).
+
+```powershell
+Clear-GitInitSession                        # session + secrets only
+Clear-GitInitSession -IncludeMasterPassword # full wipe
+```
+
+### `Save-GitInitMasterPassword` (opt-in)
+
+Stores the Bitwarden master password in the OS keychain so `Connect-Bitwarden`
+can unlock the vault without ever prompting. The password is:
+
+- prompted for interactively — never accepted as a parameter, so it cannot leak into shell history;
+- **validated** by actually unlocking the vault before anything is stored;
+- handed to `bw unlock --passwordenv` via an environment variable, never via disk or a process argument list.
+
+If it ever stops unlocking the vault (e.g. after a password change),
+`Connect-Bitwarden` removes it from the keychain automatically and falls back
+to the interactive prompt.
+
+> **Trade-off:** cached sessions expire, the master password does not.
+> Anything that can read your unlocked credential store can read it. Only opt
+> in on machines where that is acceptable.
+
+```powershell
+Save-GitInitMasterPassword     # prompt, validate, store
+```
+
+### `Remove-GitInitMasterPassword` / `Test-GitInitMasterPassword`
+
+```powershell
+Test-GitInitMasterPassword     # $true if one is stored
+Remove-GitInitMasterPassword   # delete it from the keychain
+```
+
+### `Save-GitInitSession` / `Restore-GitInitSession`
+
+Manually save the current `BW_SESSION` / `BWS_ACCESS_TOKEN` to the keychain,
+or restore them into the environment. (The main flows do this automatically.)

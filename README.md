@@ -73,6 +73,7 @@ new shells load without any network calls or password prompts.
 | Bitwarden vault session | `bw_session` | Skips `bw unlock` master-password prompt |
 | BWS service-account token | `bws_token` | Skips fetching the token from the vault |
 | Each secret value | `secret:<uuid>` | Skips `bws secret get` network call per key |
+| Master password (**opt-in only**) | `bw_master_password` | Unlocks the vault without ever prompting — see below |
 
 The last point is the most impactful. Every `bws secret get` is an HTTPS round-trip
 (~100–300 ms each). With a full warm cache the entire load sequence is local
@@ -108,6 +109,62 @@ gi_session_clear && source init.sh
 # PowerShell — wipe all cached credentials (session + every secret)
 Clear-GitInitSession; . ./init.ps1
 ```
+
+The wipes above deliberately leave the stored master password (if you opted in
+— see next section) in place. To remove that too, use `gi_session_clear --all`
+/ `Clear-GitInitSession -IncludeMasterPassword`, or the dedicated commands
+below.
+
+### Optional: store the master password
+
+By default the one thing that is never cached is the Bitwarden master password:
+when the vault session expires you get a `bw unlock` prompt. If you opt in,
+git-init stores the master password itself in the OS keychain and unlocks the
+vault with it silently (via `bw unlock --passwordenv`, so it never touches disk
+or a process argument list). Combined with `BW_CLIENTID` / `BW_CLIENTSECRET`
+for headless login, cold starts become fully prompt-free.
+
+**Opt in** (prompts for the password, validates it by actually unlocking the
+vault, and only stores it on success — never accepted as a command-line
+argument, so it can't leak into shell history):
+
+```bash
+# bash / zsh — one-time explicit command...
+gi_master_password_save
+# ...or as part of a normal run
+source init.sh --remember-password
+```
+
+```powershell
+# PowerShell — one-time explicit command...
+Save-GitInitMasterPassword
+# ...or as part of a normal run
+. ./init.ps1 -RememberPassword
+```
+
+**Check / remove:**
+
+```bash
+gi_master_password_status       # is one stored?
+gi_master_password_clear        # remove it
+gi_session_clear --all          # full wipe: session + secrets + master password
+```
+
+```powershell
+Test-GitInitMasterPassword                  # is one stored?
+Remove-GitInitMasterPassword                # remove it
+Clear-GitInitSession -IncludeMasterPassword # full wipe incl. master password
+```
+
+If the stored password stops working (e.g. you changed it), it is removed from
+the keychain automatically on the first failed unlock and you fall back to the
+normal interactive prompt — it never loops on a bad credential.
+
+**Trade-off, stated plainly:** cached sessions expire; the master password
+does not. Anything that can read your unlocked login keychain / credential
+store can read it, and it works from other devices. Only opt in on machines
+where that trade is acceptable — the session/secret caching above is already
+enough to make day-to-day shells prompt-free.
 
 ---
 
@@ -145,6 +202,7 @@ winget install Rustlang.Rustup
 . ./init.ps1 -Reload        # force-reload keys even if already in env
 . ./init.ps1 -Reconfigure   # re-prompt for git config (name, email, gh user)
 . ./init.ps1 -Menu          # set up env and run the interactive create/clone menu
+. ./init.ps1 -RememberPassword  # opt-in: store the master password in the OS keychain
 ```
 
 ### Shell profile integration
@@ -183,9 +241,12 @@ echo $PROFILE
 | `Show-APIKeysConfig`               | Dump current config (path + map).                              |
 | `Save-APIKeysConfig [-Path]`       | Persist current in-memory config.                              |
 | `Get-GHUser` / `Get-GHRepositories` / `New-GHRepository` | GitHub helpers.               |
-| `Clear-GitInitSession`             | Remove session from keychain and unset env vars.               |
+| `Clear-GitInitSession`             | Remove session from keychain and unset env vars (`-IncludeMasterPassword` for a full wipe). |
 | `Save-GitInitSession`              | Manually save current `BW_SESSION` / `BWS_ACCESS_TOKEN` to keychain. |
 | `Restore-GitInitSession`           | Manually restore session from keychain into env.               |
+| `Save-GitInitMasterPassword`       | Opt-in: validate and store the bw master password in the keychain. |
+| `Remove-GitInitMasterPassword`     | Remove the stored master password from the keychain.           |
+| `Test-GitInitMasterPassword`       | `$true` if a master password is stored.                        |
 | `Save-GitInitCredential -Key -Value` | Low-level: write one credential to the keychain.             |
 | `Get-GitInitCredential -Key`       | Low-level: read one credential from the keychain.              |
 | `Remove-GitInitCredential -Key`    | Low-level: delete one credential from the keychain.            |
@@ -214,6 +275,7 @@ source ./init.sh -q             # print nothing (errors still appear on stderr)
 source ./init.sh --reload       # force key reload
 source ./init.sh --reconfigure  # re-prompt for git identity
 source ./init.sh --menu         # set up env and run the interactive create/clone menu
+source ./init.sh --remember-password  # opt-in: store the master password in the OS keychain
 ./init.sh                       # executed (not sourced) — env stays in subshell
 ```
 
@@ -288,7 +350,12 @@ fi
 | `gi_config_remove_key <name>`     | Drop a KeyMap entry by name.                         |
 | `gi_connect_bitwarden`            | Ensure `bw` is logged-in and unlocked.               |
 | `gi_get_bws_token`                | Bootstrap `BWS_ACCESS_TOKEN` from the bw vault item. |
-| `gi_session_clear`                | Remove session from keychain and unset env vars.     |
+| `gi_session_clear [--all]`        | Remove session from keychain and unset env vars (`--all` also removes the stored master password). |
+| `gi_session_save`                 | Manually save current `BW_SESSION` / `BWS_ACCESS_TOKEN` to keychain. |
+| `gi_session_restore`              | Manually restore session from keychain into env.     |
+| `gi_master_password_save`         | Opt-in: validate and store the bw master password in the keychain. |
+| `gi_master_password_clear`        | Remove the stored master password from the keychain. |
+| `gi_master_password_status`       | Report whether a master password is stored.          |
 | `gi_keychain_save <key> <value>`  | Low-level: write one credential to the OS keychain.  |
 | `gi_keychain_load <key>`          | Low-level: read one credential from the OS keychain. |
 | `gi_keychain_clear <key>`         | Low-level: delete one credential from the OS keychain. |
