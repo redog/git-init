@@ -288,10 +288,93 @@ function script:Write-GitInitLog {
 
 # region: OS keychain integration
 # Supported backends (auto-detected):
-#   windows     - Windows Credential Manager (PasswordVault WinRT API)
+#   windows     - Windows Credential Manager (advapi32.dll)
 #   macos       - macOS Keychain via the bundled `security` CLI
 #   secret-tool - Linux GNOME Keyring / libsecret (install: app-crypt/libsecret)
 #   none        - no backend; sessions will not persist across shells
+
+if ($IsWindows) {
+    try {
+        $csharpCode = @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class GitInitWinCred {
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct CREDENTIAL {
+        public int flags;
+        public int type;
+        public string targetName;
+        public string comment;
+        public long lastWritten;
+        public int credentialBlobSize;
+        public IntPtr credentialBlob;
+        public int persist;
+        public int attributeCount;
+        public IntPtr attributes;
+        public string targetAlias;
+        public string userName;
+    }
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool CredWrite([In] ref CREDENTIAL userCredential, [In] uint flags);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool CredRead(string target, int type, int reservedFlag, out IntPtr credentialPtr);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool CredDelete(string target, int type, int reservedFlag);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern void CredFree([In] IntPtr buffer);
+
+    private const int CRED_TYPE_GENERIC = 1;
+    private const int CRED_PERSIST_LOCAL_MACHINE = 2; // local computer
+
+    public static bool Write(string target, string userName, string password) {
+        byte[] secretBytes = Encoding.Unicode.GetBytes(password);
+        IntPtr secretPtr = Marshal.AllocHGlobal(secretBytes.Length);
+        Marshal.Copy(secretBytes, 0, secretPtr, secretBytes.Length);
+
+        try {
+            CREDENTIAL cred = new CREDENTIAL();
+            cred.type = CRED_TYPE_GENERIC;
+            cred.targetName = target;
+            cred.userName = userName;
+            cred.credentialBlobSize = secretBytes.Length;
+            cred.credentialBlob = secretPtr;
+            cred.persist = CRED_PERSIST_LOCAL_MACHINE;
+
+            return CredWrite(ref cred, 0);
+        } finally {
+            Marshal.FreeHGlobal(secretPtr);
+        }
+    }
+
+    public static string Read(string target) {
+        IntPtr credPtr;
+        if (CredRead(target, CRED_TYPE_GENERIC, 0, out credPtr)) {
+            try {
+                CREDENTIAL cred = (CREDENTIAL)Marshal.PtrToStructure(credPtr, typeof(CREDENTIAL));
+                byte[] secretBytes = new byte[cred.credentialBlobSize];
+                Marshal.Copy(cred.credentialBlob, secretBytes, 0, cred.credentialBlobSize);
+                return Encoding.Unicode.GetString(secretBytes);
+            } finally {
+                CredFree(credPtr);
+            }
+        }
+        return null;
+    }
+
+    public static bool Delete(string target) {
+        return CredDelete(target, CRED_TYPE_GENERIC, 0);
+    }
+}
+"@
+        Add-Type -TypeDefinition $csharpCode -ErrorAction SilentlyContinue
+    } catch {}
+}
 
 function script:Get-KeychainBackend {
     if ($IsWindows)   { return 'windows' }
@@ -313,10 +396,7 @@ function Save-GitInitCredential {
     $svc = 'git-init'
     switch (Get-KeychainBackend) {
         'windows' {
-            [void][Windows.Security.Credentials.PasswordVault,Windows.Security.Credentials,ContentType=WindowsRuntime]
-            $vault = New-Object Windows.Security.Credentials.PasswordVault
-            try { $vault.Remove($vault.Retrieve($svc, $Key)) } catch {}
-            $vault.Add((New-Object Windows.Security.Credentials.PasswordCredential($svc, $Key, $Value)))
+            [GitInitWinCred]::Write("$svc:$Key", $Key, $Value) | Out-Null
         }
         'macos' {
             # Passing the value as `-w <value>` argv would expose it in the
@@ -359,11 +439,7 @@ function Get-GitInitCredential {
     switch (Get-KeychainBackend) {
         'windows' {
             try {
-                [void][Windows.Security.Credentials.PasswordVault,Windows.Security.Credentials,ContentType=WindowsRuntime]
-                $vault = New-Object Windows.Security.Credentials.PasswordVault
-                $c = $vault.Retrieve($svc, $Key)
-                $c.RetrievePassword()
-                return $c.Password
+                return [GitInitWinCred]::Read("$svc:$Key")
             } catch { return $null }
         }
         'macos' {
@@ -391,9 +467,7 @@ function Remove-GitInitCredential {
     switch (Get-KeychainBackend) {
         'windows' {
             try {
-                [void][Windows.Security.Credentials.PasswordVault,Windows.Security.Credentials,ContentType=WindowsRuntime]
-                $vault = New-Object Windows.Security.Credentials.PasswordVault
-                $vault.Remove($vault.Retrieve($svc, $Key))
+                [GitInitWinCred]::Delete("$svc:$Key") | Out-Null
             } catch {}
         }
         'macos' {
