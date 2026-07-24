@@ -396,7 +396,7 @@ function Save-GitInitCredential {
     $svc = 'git-init'
     switch (Get-KeychainBackend) {
         'windows' {
-            [GitInitWinCred]::Write("$svc:$Key", $Key, $Value) | Out-Null
+            [GitInitWinCred]::Write("${svc}:$Key", $Key, $Value) | Out-Null
         }
         'macos' {
             # Passing the value as `-w <value>` argv would expose it in the
@@ -439,7 +439,7 @@ function Get-GitInitCredential {
     switch (Get-KeychainBackend) {
         'windows' {
             try {
-                return [GitInitWinCred]::Read("$svc:$Key")
+                return [GitInitWinCred]::Read("${svc}:$Key")
             } catch { return $null }
         }
         'macos' {
@@ -467,7 +467,7 @@ function Remove-GitInitCredential {
     switch (Get-KeychainBackend) {
         'windows' {
             try {
-                [GitInitWinCred]::Delete("$svc:$Key") | Out-Null
+                [GitInitWinCred]::Delete("${svc}:$Key") | Out-Null
             } catch {}
         }
         'macos' {
