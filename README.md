@@ -86,7 +86,43 @@ are in your `KeyMap`.
 | -------- | ----------------------------------------- | -------------------------------------------------------------------- |
 | macOS    | macOS Keychain (`security` CLI)           | Built-in, no setup needed                                            |
 | Linux    | GNOME Keyring / libsecret (`secret-tool`) | `app-crypt/libsecret` (Gentoo) · `libsecret-tools` (Debian / Ubuntu) |
+| Linux (headless / SSH) | `file` — 0600 files under `$XDG_RUNTIME_DIR/git-init` | Automatic fallback when no Secret Service is reachable |
 | Windows  | Windows Credential Manager (WinRT API)    | Built-in, no setup needed                                            |
+
+Check what your current shell resolved to — and why — with `gi_keychain_status`.
+
+### Remote / SSH shells that re-prompt for the master password
+
+On a Linux workstation you SSH into, `secret-tool` usually cannot reach a
+Secret Service: `DBUS_SESSION_BUS_ADDRESS` is absent from the SSH environment,
+and the login keyring is unlocked by PAM at *graphical* login only. Every
+keychain read then fails, so each new shell falls through to a `bw unlock`
+prompt.
+
+git-init handles this in two steps:
+
+1. **Reconnect to the real keyring when it exists.** If `DBUS_SESSION_BUS_ADDRESS`
+   is unset but `/run/user/<uid>/bus` is live (systemd user session), it is
+   exported automatically and the normal keyring is used.
+2. **Fall back to a per-login-session file cache** when there genuinely is no
+   Secret Service. Values go to `$XDG_RUNTIME_DIR/git-init` — tmpfs, mode 0600
+   in a 0700 directory, destroyed by logind when your last session ends — so
+   the vault session is unlocked once and reused by every later shell.
+
+The file cache is **plaintext at rest** (same posture as an `ssh-agent`
+socket), so:
+
+- The master password is **not** written there. `gi_master_password_save`
+  refuses unless you set `GIT_INIT_ALLOW_PLAINTEXT_MASTER_PASSWORD=1`.
+- Entries expire after `GIT_INIT_FILE_CACHE_TTL` seconds (default `28800`, 8h;
+  `0` disables expiry). This is the only bound when there is no
+  `$XDG_RUNTIME_DIR` and the cache lands in `$TMPDIR`.
+- Set `GIT_INIT_KEYCHAIN_BACKEND=none` to turn caching off entirely, or pin a
+  backend with `macos` / `secret-tool` / `file`.
+
+For encrypted storage over SSH instead, install libsecret and make sure a
+keyring daemon is running and unlocked for your login session (e.g. `gnome-keyring-daemon
+--start --components=secrets`, or PAM-unlock it at SSH login).
 
 **Cache invalidation:**
 
@@ -350,6 +386,7 @@ fi
 | `gi_config_remove_key <name>`     | Drop a KeyMap entry by name.                         |
 | `gi_connect_bitwarden`            | Ensure `bw` is logged-in and unlocked.               |
 | `gi_get_bws_token`                | Bootstrap `BWS_ACCESS_TOKEN` from the bw vault item. |
+| `gi_keychain_status`              | Which credential backend this shell resolved to, and why. |
 | `gi_session_clear [--all]`        | Remove session from keychain and unset env vars (`--all` also removes the stored master password). |
 | `gi_session_save`                 | Manually save current `BW_SESSION` / `BWS_ACCESS_TOKEN` to keychain. |
 | `gi_session_restore`              | Manually restore session from keychain into env.     |
