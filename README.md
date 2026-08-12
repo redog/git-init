@@ -86,43 +86,56 @@ are in your `KeyMap`.
 | -------- | ----------------------------------------- | -------------------------------------------------------------------- |
 | macOS    | macOS Keychain (`security` CLI)           | Built-in, no setup needed                                            |
 | Linux    | GNOME Keyring / libsecret (`secret-tool`) | `app-crypt/libsecret` (Gentoo) · `libsecret-tools` (Debian / Ubuntu) |
-| Linux (headless / SSH) | `file` — 0600 files under `$XDG_RUNTIME_DIR/git-init` | Automatic fallback when no Secret Service is reachable |
 | Windows  | Windows Credential Manager (WinRT API)    | Built-in, no setup needed                                            |
 
-Check what your current shell resolved to — and why — with `gi_keychain_status`.
+Credentials are only ever written to one of these stores. When none is
+reachable, nothing is cached and every shell prompts — git-init does not
+substitute a store of its own. `gi_keychain_status` reports which backend the
+current shell resolved to and why.
 
 ### Remote / SSH shells that re-prompt for the master password
 
-On a Linux workstation you SSH into, `secret-tool` usually cannot reach a
-Secret Service: `DBUS_SESSION_BUS_ADDRESS` is absent from the SSH environment,
-and the login keyring is unlocked by PAM at *graphical* login only. Every
-keychain read then fails, so each new shell falls through to a `bw unlock`
-prompt.
+The Secret Service **is** reachable over SSH. Two things commonly stop it, and
+neither is a limitation of SSH itself:
 
-git-init handles this in two steps:
+1. **No bus address in the environment.** `secret-tool` locates the daemon via
+   `DBUS_SESSION_BUS_ADDRESS`, which `sshd` does not set. libsecret then tries
+   to autolaunch a second, private bus and fails with
+   `Cannot autolaunch D-Bus without X11 $DISPLAY` — while the real daemon is
+   running the whole time on `/run/user/<uid>/bus`.
 
-1. **Reconnect to the real keyring when it exists.** If `DBUS_SESSION_BUS_ADDRESS`
-   is unset but `/run/user/<uid>/bus` is live (systemd user session), it is
-   exported automatically and the normal keyring is used.
-2. **Fall back to a per-login-session file cache** when there genuinely is no
-   Secret Service. Values go to `$XDG_RUNTIME_DIR/git-init` — tmpfs, mode 0600
-   in a 0700 directory, destroyed by logind when your last session ends — so
-   the vault session is unlocked once and reused by every later shell.
+   git-init now exports that address itself when the socket exists, so an SSH
+   shell talks to the same keyring as your desktop session. To fix it for
+   everything else in the shell, add to your `~/.bashrc` / `~/.zshrc`:
 
-The file cache is **plaintext at rest** (same posture as an `ssh-agent`
-socket), so:
+   ```bash
+   [[ -z ${DBUS_SESSION_BUS_ADDRESS:-} && -S /run/user/$(id -u)/bus ]] \
+     && export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+   ```
 
-- The master password is **not** written there. `gi_master_password_save`
-  refuses unless you set `GIT_INIT_ALLOW_PLAINTEXT_MASTER_PASSWORD=1`.
-- Entries expire after `GIT_INIT_FILE_CACHE_TTL` seconds (default `28800`, 8h;
-  `0` disables expiry). This is the only bound when there is no
-  `$XDG_RUNTIME_DIR` and the cache lands in `$TMPDIR`.
-- Set `GIT_INIT_KEYCHAIN_BACKEND=none` to turn caching off entirely, or pin a
-  backend with `macos` / `secret-tool` / `file`.
+2. **The login keyring is locked.** It is encrypted with your login password
+   and unlocked by `pam_gnome_keyring` at login; an SSH key login never
+   supplies a password, and the unlock prompter is a GUI, so a locked keyring
+   cannot be unlocked from within the SSH session. Either:
 
-For encrypted storage over SSH instead, install libsecret and make sure a
-keyring daemon is running and unlocked for your login session (e.g. `gnome-keyring-daemon
---start --components=secrets`, or PAM-unlock it at SSH login).
+   - log in at the console once — the keyring stays unlocked and SSH shells
+     share it (this is why it "works sometimes"); or
+   - unlock at SSH login, which requires keyboard-interactive/password auth:
+
+     ```
+     # /etc/pam.d/sshd
+     auth     optional  pam_gnome_keyring.so
+     session  optional  pam_gnome_keyring.so auto_start
+     ```
+
+   - or unlock it by hand once per boot:
+
+     ```bash
+     gnome-keyring-daemon --unlock --components=secrets   # password on stdin
+     ```
+
+`GIT_INIT_KEYCHAIN_BACKEND` pins the backend (`macos`, `secret-tool`) or
+disables caching entirely (`none`).
 
 **Cache invalidation:**
 

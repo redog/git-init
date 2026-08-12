@@ -333,9 +333,9 @@ gi_config_remove_key() {
 # Supported backends (auto-detected, override with GIT_INIT_KEYCHAIN_BACKEND):
 #   macos       - macOS Keychain via the bundled `security` CLI
 #   secret-tool - Linux GNOME Keyring / libsecret (install: app-crypt/libsecret)
-#   file        - fallback for headless/SSH sessions with no reachable Secret
-#                 Service: 0600 files in $XDG_RUNTIME_DIR (see _gi_file_cache_dir)
-#   none        - no backend; sessions will not persist across shells
+#   none        - no reachable credential store; sessions will not persist
+#                 across shells. gi_keychain_status explains why and how to fix
+#                 it — credentials are never written anywhere else.
 #
 # Service name used for all stored credentials:
 _GI_KEYCHAIN_SERVICE="git-init"
@@ -354,7 +354,7 @@ _GI_KEYCHAIN_BACKEND_REASON=""
 # Over SSH there is usually no DBUS_SESSION_BUS_ADDRESS in the environment even
 # though the user's bus is running (systemd --user starts it at login and it
 # outlives the graphical session). Point libsecret at the well-known socket so
-# the real keyring is used instead of falling through to the file backend.
+# the real keyring is reachable from an SSH shell.
 _gi_dbus_bootstrap() {
   [[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]] && return 0
   local _uid _sock
@@ -398,13 +398,13 @@ _gi_keychain_resolve() {
   [[ -n "$_GI_KEYCHAIN_BACKEND" ]] && return 0
 
   case "${GIT_INIT_KEYCHAIN_BACKEND:-}" in
-    macos|secret-tool|file|none)
+    macos|secret-tool|none)
       _GI_KEYCHAIN_BACKEND="$GIT_INIT_KEYCHAIN_BACKEND"
       _GI_KEYCHAIN_BACKEND_REASON="forced by GIT_INIT_KEYCHAIN_BACKEND"
       return 0 ;;
     "") ;;
     *)
-      _gi_log_e 1 "Ignoring unknown GIT_INIT_KEYCHAIN_BACKEND='$GIT_INIT_KEYCHAIN_BACKEND' (use macos, secret-tool, file, or none)." ;;
+      _gi_log_e 1 "Ignoring unknown GIT_INIT_KEYCHAIN_BACKEND='$GIT_INIT_KEYCHAIN_BACKEND' (use macos, secret-tool, or none)." ;;
   esac
 
   case "${OSTYPE:-}" in
@@ -421,14 +421,9 @@ _gi_keychain_resolve() {
     _GI_KEYCHAIN_BACKEND_REASON="secret-tool not installed"
   fi
 
-  # No usable Secret Service (the normal case on a remote/SSH shell). Fall back
-  # to a per-login-session file cache so the vault session still survives across
-  # shells instead of re-prompting in every one.
-  if _gi_file_cache_resolve; then
-    _GI_KEYCHAIN_BACKEND="file"
-  else
-    _GI_KEYCHAIN_BACKEND="none"
-  fi
+  # No reachable Secret Service. We do not invent a substitute store — the
+  # session simply is not cached, and gi_keychain_status says why.
+  _GI_KEYCHAIN_BACKEND="none"
   return 0
 }
 
@@ -438,128 +433,10 @@ _gi_keychain_backend() {
   printf '%s\n' "$_GI_KEYCHAIN_BACKEND"
 }
 
-#------------------------------------------------------------------------------
-# File backend (headless / SSH fallback)
-#------------------------------------------------------------------------------
-# Values are stored unencrypted, mode 0600, in a 0700 directory owned by the
-# user — the same posture as an ssh-agent or gpg-agent socket. $XDG_RUNTIME_DIR
-# is the right home for it: tmpfs (never hits disk) and destroyed by logind when
-# the user's last session ends, which is exactly the lifetime a vault session
-# wants. Entries also expire after GIT_INIT_FILE_CACHE_TTL seconds (default 8h)
-# to bound exposure when the fallback lands in $TMPDIR instead.
-#
-# The master password is NOT stored here unless the user explicitly opts in with
-# GIT_INIT_ALLOW_PLAINTEXT_MASTER_PASSWORD=1 — a session is an expiring cache,
-# the password is not, and plaintext-at-rest is a different trade entirely.
-_GI_FILE_CACHE_DIR=""
-# 1 when the cache lives in $XDG_RUNTIME_DIR (tmpfs, wiped when the user's last
-# login session ends); 0 for the $TMPDIR fallback, where only the TTL bounds it.
-_GI_FILE_CACHE_VOLATILE=0
-
-# Sets _GI_FILE_CACHE_DIR (creating the directory on first use). Returns
-# non-zero when no safe directory is available.
-_gi_file_cache_resolve() {
-  [[ -n "$_GI_FILE_CACHE_DIR" ]] && return 0
-
-  local base fresh=0
-  if [[ -n "${XDG_RUNTIME_DIR:-}" && -d "${XDG_RUNTIME_DIR}" && -w "${XDG_RUNTIME_DIR}" ]]; then
-    base="${XDG_RUNTIME_DIR}/git-init"
-    _GI_FILE_CACHE_VOLATILE=1
-  else
-    base="${TMPDIR:-/tmp}/git-init-$(id -u 2>/dev/null || echo unknown)"
-    _GI_FILE_CACHE_VOLATILE=0
-  fi
-
-  if [[ ! -d "$base" ]]; then
-    (umask 077; mkdir -p "$base") 2>/dev/null || return 1
-    fresh=1
-  fi
-  # Never write secrets into a directory somebody else owns (symlink/squat
-  # protection, which matters for the $TMPDIR path).
-  [[ -O "$base" ]] || return 1
-  chmod 700 "$base" 2>/dev/null || true
-
-  _GI_FILE_CACHE_DIR="$base"
-  # Announce the downgrade only when we create the directory, i.e. once per
-  # login session rather than in every shell.
-  if (( fresh )); then
-    local _life
-    if (( _GI_FILE_CACHE_VOLATILE )); then
-      _life="cleared when your last login session ends"
-    else
-      _life="expires after ${GIT_INIT_FILE_CACHE_TTL:-28800}s"
-    fi
-    _gi_log_e 1 "Note: no OS keychain reachable in this session; caching the vault session in $base (0600, $_life)."
-    _gi_log_e 1 "      Run gi_keychain_status for details, or set GIT_INIT_KEYCHAIN_BACKEND=none to disable caching."
-  fi
-  return 0
-}
-
-_gi_file_cache_dir() {
-  _gi_file_cache_resolve || return 1
-  printf '%s\n' "$_GI_FILE_CACHE_DIR"
-}
-
-# Map an arbitrary key ("secret:<uuid>") onto a safe filename.
-_gi_file_cache_path() {
-  local key="$1"
-  _gi_file_cache_resolve || return 1
-  local safe="${key//[^A-Za-z0-9._-]/_}"
-  printf '%s/%s\n' "$_GI_FILE_CACHE_DIR" "$safe"
-}
-
-_gi_file_mtime() {
-  stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null
-}
-
-_gi_file_cache_save() {
-  # `_path`, never `path`: see the note in gi_config_write.
-  local key="$1" value="$2" _path
-  _path=$(_gi_file_cache_path "$key") || return 1
-  local tmp="${_path}.$$"
-  (umask 077; printf '%s' "$value" > "$tmp") 2>/dev/null || return 1
-  mv -f "$tmp" "$_path" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; return 1; }
-}
-
-_gi_file_cache_load() {
-  local key="$1" _path
-  _path=$(_gi_file_cache_path "$key") || return 1
-  [[ -f "$_path" && -O "$_path" ]] || return 1
-
-  local ttl="${GIT_INIT_FILE_CACHE_TTL:-28800}"
-  if [[ "$ttl" =~ ^[0-9]+$ ]] && (( ttl > 0 )); then
-    local mtime now
-    mtime=$(_gi_file_mtime "$_path") || mtime=""
-    now=$(date +%s 2>/dev/null) || now=""
-    if [[ -n "$mtime" && -n "$now" ]] && (( now - mtime > ttl )); then
-      rm -f "$_path" 2>/dev/null
-      return 1
-    fi
-  fi
-
-  cat "$_path" 2>/dev/null
-}
-
-_gi_file_cache_clear() {
-  local key="$1" _path
-  _path=$(_gi_file_cache_path "$key") 2>/dev/null || return 0
-  rm -f "$_path" 2>/dev/null || true
-  return 0
-}
-
 gi_keychain_save() {
   local key="$1" value="$2"
   local backend
   _gi_keychain_resolve; backend="$_GI_KEYCHAIN_BACKEND"
-
-  # Single choke point for the master password: refuse to write it in plaintext
-  # unless the user has explicitly accepted that trade.
-  if [[ "$key" == "$_GI_MASTER_PW_KEY" && "$backend" == "file" \
-        && "${GIT_INIT_ALLOW_PLAINTEXT_MASTER_PASSWORD:-}" != "1" ]]; then
-    _gi_log_e 1 "Refusing to store the master password without an OS keychain (set GIT_INIT_ALLOW_PLAINTEXT_MASTER_PASSWORD=1 to override)."
-    return 1
-  fi
-
   case "$backend" in
     macos)
       # Passing the value as `-w <value>` argv would expose it in the process
@@ -581,28 +458,21 @@ gi_keychain_save() {
       ;;
     secret-tool)
       # The probe only proves reads work; a collection can still refuse writes
-      # (locked, no prompter). Downgrade to the file backend for the rest of the
-      # shell rather than silently losing the session.
-      if printf '%s' "$value" | \
-           secret-tool store --label="git-init: $key" \
-             service "$_GI_KEYCHAIN_SERVICE" account "$key" 2>/dev/null; then
-        return 0
-      fi
-      _GI_KEYCHAIN_BACKEND_REASON="secret-tool store failed (keyring locked?)"
-      _gi_log_e 1 "Keychain write failed; falling back to the file session cache."
-      if _gi_file_cache_dir >/dev/null; then
-        _GI_KEYCHAIN_BACKEND="file"
-        gi_keychain_save "$key" "$value"
-      else
-        _GI_KEYCHAIN_BACKEND="none"
-        return 1
-      fi
-      ;;
-    file)
-      _gi_file_cache_save "$key" "$value"
+      # (locked, no prompter). Say so loudly and stop treating the backend as
+      # usable for the rest of the shell — a silent failure here is what made
+      # every new shell re-prompt with no explanation.
+      local _err _rc=0
+      _err=$(printf '%s' "$value" | \
+        secret-tool store --label="git-init: $key" \
+          service "$_GI_KEYCHAIN_SERVICE" account "$key" 2>&1) || _rc=$?
+      (( _rc == 0 )) && return 0
+      _GI_KEYCHAIN_BACKEND="none"
+      _GI_KEYCHAIN_BACKEND_REASON="secret-tool store failed: ${_err%%$'\n'*}"
+      _gi_log_e 1 "Keychain write failed (${_err%%$'\n'*}); this session will not be cached. Run gi_keychain_status."
+      return 1
       ;;
     none)
-      _gi_log_e 2 "Warning: no credential cache available; the vault session will not persist across shells. Run gi_keychain_status for details."
+      _gi_log_e 1 "Warning: no credential store reachable; the vault session will not persist across shells. Run gi_keychain_status for why."
       return 1
       ;;
   esac
@@ -621,9 +491,6 @@ gi_keychain_load() {
       secret-tool lookup \
         service "$_GI_KEYCHAIN_SERVICE" account "$key" 2>/dev/null
       ;;
-    file)
-      _gi_file_cache_load "$key"
-      ;;
     none)
       return 1
       ;;
@@ -634,9 +501,6 @@ gi_keychain_clear() {
   local key="$1"
   local backend
   _gi_keychain_resolve; backend="$_GI_KEYCHAIN_BACKEND"
-  # Always sweep the file cache too: a shell that downgraded mid-run may have
-  # left a copy behind, and a clear must not leave a live session on disk.
-  [[ "$backend" != "none" ]] && _gi_file_cache_clear "$key"
   case "$backend" in
     macos)
       security delete-generic-password \
@@ -646,14 +510,15 @@ gi_keychain_clear() {
       secret-tool clear \
         service "$_GI_KEYCHAIN_SERVICE" account "$key" 2>/dev/null || true
       ;;
-    file|none)
+    none)
       ;;
   esac
   return 0
 }
 
 gi_keychain_status() {
-  # Diagnostic: which backend is in use, why, and what it means for prompting.
+  # Diagnostic for the "every new shell asks for my master password again"
+  # case. Re-resolves from scratch so it reports live state, not the memo.
   _GI_KEYCHAIN_BACKEND=""
   _GI_KEYCHAIN_BACKEND_REASON=""
   local backend
@@ -661,37 +526,64 @@ gi_keychain_status() {
 
   echo "Keychain backend: $backend"
   [[ -n "$_GI_KEYCHAIN_BACKEND_REASON" ]] && echo "Reason:           $_GI_KEYCHAIN_BACKEND_REASON"
-  case "${OSTYPE:-}" in
-    darwin*) ;;
-    *)
-      echo "DBUS_SESSION_BUS_ADDRESS: ${DBUS_SESSION_BUS_ADDRESS:-<unset>}"
-      echo "XDG_RUNTIME_DIR:          ${XDG_RUNTIME_DIR:-<unset>}"
-      ;;
-  esac
 
-  case "$backend" in
-    macos|secret-tool)
-      echo "Sessions persist across shells via the OS keychain."
-      ;;
-    file)
-      echo "Sessions persist across shells via $(_gi_file_cache_dir 2>/dev/null || echo '<unavailable>')"
-      if (( _GI_FILE_CACHE_VOLATILE )); then
-        echo "(plaintext, mode 0600, on tmpfs; expires after ${GIT_INIT_FILE_CACHE_TTL:-28800}s or when your last login session ends)."
-      else
-        echo "(plaintext, mode 0600, no XDG_RUNTIME_DIR — expires after ${GIT_INIT_FILE_CACHE_TTL:-28800}s only)."
-      fi
-      echo "The master password is not cached here unless GIT_INIT_ALLOW_PLAINTEXT_MASTER_PASSWORD=1."
-      if ! command -v secret-tool &>/dev/null; then
-        echo "Install libsecret (secret-tool) for encrypted storage: app-crypt/libsecret (Gentoo) / libsecret-tools (Debian)."
-      else
-        echo "To use the real keyring over SSH, ensure the keyring daemon is running and unlocked for your login session."
-      fi
-      ;;
-    none)
-      echo "No cache available — every new shell will prompt for the master password."
-      echo "Install libsecret (secret-tool), or make \$XDG_RUNTIME_DIR / \$TMPDIR writable."
-      ;;
-  esac
+  if [[ "$backend" == "macos" ]]; then
+    echo "Sessions persist across shells via the macOS Keychain."
+    return 0
+  fi
+
+  echo "DBUS_SESSION_BUS_ADDRESS: ${DBUS_SESSION_BUS_ADDRESS:-<unset>}"
+  local _uid _sock
+  _uid=$(id -u 2>/dev/null || echo "")
+  _sock="/run/user/${_uid}/bus"
+  if [[ -n "$_uid" ]]; then
+    if [[ -S "$_sock" ]]; then
+      echo "Session bus socket:       $_sock (present)"
+    else
+      echo "Session bus socket:       $_sock (missing — no systemd user session?)"
+    fi
+  fi
+  if command -v loginctl &>/dev/null && [[ -n "$_uid" ]]; then
+    # A console/graphical session here means the login keyring is very likely
+    # already unlocked and only the bus address was missing.
+    local _sessions
+    _sessions=$(loginctl list-sessions --no-legend 2>/dev/null \
+      | awk -v u="$_uid" '$2 == u { print "  session " $1 " (" $4 ")" }') || _sessions=""
+    if [[ -n "$_sessions" ]]; then
+      echo "Login sessions for uid $_uid:"
+      printf '%s\n' "$_sessions"
+    fi
+  fi
+
+  if [[ "$backend" == "secret-tool" ]]; then
+    echo "Sessions persist across shells via the login keyring."
+    return 0
+  fi
+
+  echo
+  echo "No credential store reachable — every new shell will prompt for the master password."
+  echo "Nothing is cached anywhere else; git-init does not write credentials to disk."
+  echo
+  if ! command -v secret-tool &>/dev/null; then
+    echo "Fix: install libsecret — app-crypt/libsecret (Gentoo) / libsecret-tools (Debian, Ubuntu)."
+    return 0
+  fi
+  echo "The Secret Service *is* reachable over SSH; two things commonly stop it:"
+  echo
+  echo "  1. No bus address. If the socket above is present but"
+  echo "     DBUS_SESSION_BUS_ADDRESS is unset, git-init now exports it for you."
+  echo "     For everything else in the shell, add to your rc file:"
+  echo "       export DBUS_SESSION_BUS_ADDRESS=\"unix:path=/run/user/\$(id -u)/bus\""
+  echo
+  echo "  2. The login keyring is locked. PAM unlocks it with your login password,"
+  echo "     which an SSH key login never supplies, and the unlock prompter is a GUI."
+  echo "     Either log in at the console once (the keyring then stays unlocked and"
+  echo "     this SSH shell shares it), or unlock it at SSH login with pam_gnome_keyring:"
+  echo "       /etc/pam.d/sshd:  auth     optional  pam_gnome_keyring.so"
+  echo "                         session  optional  pam_gnome_keyring.so auto_start"
+  echo "     (that path needs keyboard-interactive/password SSH auth, not pubkey), or"
+  echo "     unlock it by hand once per boot:"
+  echo "       gnome-keyring-daemon --unlock --components=secrets   # password on stdin"
   return 0
 }
 
@@ -763,16 +655,8 @@ gi_master_password_save() {
   local backend
   _gi_keychain_resolve; backend="$_GI_KEYCHAIN_BACKEND"
   if [[ "$backend" == "none" ]]; then
-    echo "No keychain backend available; refusing to store the master password." >&2
-    echo "Install libsecret (provides secret-tool) on Linux." >&2
-    return 1
-  fi
-  # The file backend is plaintext-at-rest. Caching an expiring session there is a
-  # reasonable trade; caching the password that never expires is a different one,
-  # so it takes an explicit opt-in.
-  if [[ "$backend" == "file" && "${GIT_INIT_ALLOW_PLAINTEXT_MASTER_PASSWORD:-}" != "1" ]]; then
-    echo "No OS keychain in this session (backend: file) — refusing to store the master password in plaintext." >&2
-    echo "Run gi_keychain_status for why, or set GIT_INIT_ALLOW_PLAINTEXT_MASTER_PASSWORD=1 to accept the trade." >&2
+    echo "No credential store reachable; refusing to store the master password." >&2
+    echo "Run gi_keychain_status to see why and how to fix it." >&2
     return 1
   fi
   command -v bw &>/dev/null || { echo "Bitwarden CLI 'bw' not found in PATH." >&2; return 1; }
